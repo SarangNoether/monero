@@ -419,9 +419,11 @@ namespace rct {
         for (size_t i = 0; i < n; ++i)
             CHECK_AND_ASSERT_MES(sc_check(sig.s[i].bytes) == 0, false, "Bad signature scalar!");
         CHECK_AND_ASSERT_MES(sc_check(sig.c1.bytes) == 0, false, "Bad signature commitment!");
+        CHECK_AND_ASSERT_MES(!(sig.I == rct::identity()), false, "Bad key image!");
 
         key c = copy(sig.c1);
         key D_8 = scalarmult8(sig.D);
+        CHECK_AND_ASSERT_MES(!(D_8 == rct::identity()), false, "Bad auxiliary key image!");
         geDsmp I_precomp;
         geDsmp D_precomp;
         precomp(I_precomp.k,sig.I);
