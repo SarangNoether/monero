@@ -40,10 +40,11 @@ t_command_parser_executor::t_command_parser_executor(
     uint32_t ip
   , uint16_t port
   , const boost::optional<tools::login>& login
+  , const epee::net_utils::ssl_options_t& ssl_options
   , bool is_rpc
   , cryptonote::core_rpc_server* rpc_server
   )
-  : m_executor(ip, port, login, is_rpc, rpc_server)
+  : m_executor(ip, port, login, ssl_options, is_rpc, rpc_server)
 {}
 
 bool t_command_parser_executor::print_peer_list(const std::vector<std::string>& args)
@@ -125,6 +126,13 @@ bool t_command_parser_executor::print_connections(const std::vector<std::string>
   if (!args.empty()) return false;
 
   return m_executor.print_connections();
+}
+
+bool t_command_parser_executor::print_net_stats(const std::vector<std::string>& args)
+{
+  if (!args.empty()) return false;
+
+  return m_executor.print_net_stats();
 }
 
 bool t_command_parser_executor::print_blockchain_info(const std::vector<std::string>& args)
@@ -486,11 +494,14 @@ bool t_command_parser_executor::set_limit_down(const std::vector<std::string>& a
 
 bool t_command_parser_executor::out_peers(const std::vector<std::string>& args)
 {
-	if (args.empty()) return false;
-	
-	unsigned int limit;
+	bool set = false;
+	uint32_t limit = 0;
 	try {
-		limit = std::stoi(args[0]);
+		if (!args.empty())
+		{
+			limit = std::stoi(args[0]);
+			set = true;
+		}
 	}
 	  
 	catch(const std::exception& ex) {
@@ -498,16 +509,19 @@ bool t_command_parser_executor::out_peers(const std::vector<std::string>& args)
 		return false;
 	}
 	
-	return m_executor.out_peers(limit);
+	return m_executor.out_peers(set, limit);
 }
 
 bool t_command_parser_executor::in_peers(const std::vector<std::string>& args)
 {
-	if (args.empty()) return false;
-
-	unsigned int limit;
+	bool set = false;
+	uint32_t limit = 0;
 	try {
-		limit = std::stoi(args[0]);
+		if (!args.empty())
+		{
+			limit = std::stoi(args[0]);
+			set = true;
+		}
 	}
 
 	catch(const std::exception& ex) {
@@ -515,19 +529,7 @@ bool t_command_parser_executor::in_peers(const std::vector<std::string>& args)
 		return false;
 	}
 
-	return m_executor.in_peers(limit);
-}
-
-bool t_command_parser_executor::start_save_graph(const std::vector<std::string>& args)
-{
-	if (!args.empty()) return false;
-	return m_executor.start_save_graph();
-}
-
-bool t_command_parser_executor::stop_save_graph(const std::vector<std::string>& args)
-{
-	if (!args.empty()) return false;
-	return m_executor.stop_save_graph();
+	return m_executor.in_peers(set, limit);
 }
 
 bool t_command_parser_executor::hard_fork_info(const std::vector<std::string>& args)
@@ -586,6 +588,13 @@ bool t_command_parser_executor::unban(const std::vector<std::string>& args)
   if (args.size() != 1) return false;
   std::string ip = args[0];
   return m_executor.unban(ip);
+}
+
+bool t_command_parser_executor::banned(const std::vector<std::string>& args)
+{
+  if (args.size() != 1) return false;
+  std::string address = args[0];
+  return m_executor.banned(address);
 }
 
 bool t_command_parser_executor::flush_txpool(const std::vector<std::string>& args)
@@ -665,11 +674,38 @@ bool t_command_parser_executor::alt_chain_info(const std::vector<std::string>& a
 {
   if(args.size() > 1)
   {
-    std::cout << "usage: alt_chain_info [block_hash]" << std::endl;
+    std::cout << "usage: alt_chain_info [block_hash|>N|-N]" << std::endl;
     return false;
   }
 
-  return m_executor.alt_chain_info(args.size() == 1 ? args[0] : "");
+  std::string tip;
+  size_t above = 0;
+  uint64_t last_blocks = 0;
+  if (args.size() == 1)
+  {
+    if (args[0].size() > 0 && args[0][0] == '>')
+    {
+      if (!epee::string_tools::get_xtype_from_string(above, args[0].c_str() + 1))
+      {
+        std::cout << "invalid above parameter" << std::endl;
+        return false;
+      }
+    }
+    else if (args[0].size() > 0 && args[0][0] == '-')
+    {
+      if (!epee::string_tools::get_xtype_from_string(last_blocks, args[0].c_str() + 1))
+      {
+        std::cout << "invalid last_blocks parameter" << std::endl;
+        return false;
+      }
+    }
+    else
+    {
+      tip = args[0];
+    }
+  }
+
+  return m_executor.alt_chain_info(tip, above, last_blocks);
 }
 
 bool t_command_parser_executor::print_blockchain_dynamic_stats(const std::vector<std::string>& args)

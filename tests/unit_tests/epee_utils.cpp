@@ -27,6 +27,7 @@
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <array>
+#include <boost/predef/other/endian.h>
 #include <boost/endian/conversion.hpp>
 #include <boost/range/algorithm/equal.hpp>
 #include <boost/range/algorithm_ext/iota.hpp>
@@ -135,7 +136,7 @@ namespace
     EXPECT_FALSE( lhs >= rhs );  \
     EXPECT_TRUE( rhs >= lhs )
 
-  #ifdef BOOST_LITTLE_ENDIAN
+  #if BOOST_ENDIAN_LITTLE_BYTE
     #define CHECK_LESS_ENDIAN(lhs, rhs) CHECK_LESS( rhs , lhs )
   #else
     #define CHECK_LESS_ENDIAN(lhs, rhs) CHECK_LESS( lhs , rhs )
@@ -945,4 +946,21 @@ TEST(parsing, number)
   i = s.begin();
   epee::misc_utils::parse::match_number(i, s.end(), val);
   ASSERT_EQ(val, "+9.34e+03");
+}
+
+TEST(parsing, unicode)
+{
+  std::string bs;
+  std::string s;
+  std::string::const_iterator si;
+
+  s = "\"\""; si = s.begin(); ASSERT_TRUE(epee::misc_utils::parse::match_string(si, s.end(), bs)); ASSERT_EQ(bs, "");
+  s = "\"\\u0000\""; si = s.begin(); ASSERT_TRUE(epee::misc_utils::parse::match_string(si, s.end(), bs)); ASSERT_EQ(bs, std::string(1, '\0'));
+  s = "\"\\u0020\""; si = s.begin(); ASSERT_TRUE(epee::misc_utils::parse::match_string(si, s.end(), bs)); ASSERT_EQ(bs, " ");
+  s = "\"\\u1\""; si = s.begin(); ASSERT_FALSE(epee::misc_utils::parse::match_string(si, s.end(), bs));
+  s = "\"\\u12\""; si = s.begin(); ASSERT_FALSE(epee::misc_utils::parse::match_string(si, s.end(), bs));
+  s = "\"\\u123\""; si = s.begin(); ASSERT_FALSE(epee::misc_utils::parse::match_string(si, s.end(), bs));
+  s = "\"\\u1234\""; si = s.begin(); ASSERT_TRUE(epee::misc_utils::parse::match_string(si, s.end(), bs)); ASSERT_EQ(bs, "ሴ");
+  s = "\"foo\\u1234bar\""; si = s.begin(); ASSERT_TRUE(epee::misc_utils::parse::match_string(si, s.end(), bs)); ASSERT_EQ(bs, "fooሴbar");
+  s = "\"\\u3042\\u307e\\u3084\\u304b\\u3059\""; si = s.begin(); ASSERT_TRUE(epee::misc_utils::parse::match_string(si, s.end(), bs)); ASSERT_EQ(bs, "あまやかす");
 }

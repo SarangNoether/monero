@@ -77,7 +77,15 @@ script: |
   create_per-host_faketime_wrappers "2000-01-01 12:00:00"
   export PATH=${WRAP_DIR}:${PATH}
 
+  git config --global core.abbrev 9
   cd monero
+  # Set the version string that gets added to the tar archive name
+  version="`git describe`"
+  if [[ $version == *"-"*"-"* ]]; then
+    version="`git rev-parse --short=9 HEAD`"
+    version="`echo $version | head -c 9`"
+  fi
+
   BASEPREFIX=`pwd`/contrib/depends
 
   mkdir -p ${BASEPREFIX}/SDKs
@@ -100,8 +108,8 @@ script: |
     export PATH=${BASEPREFIX}/${i}/native/bin:${ORIGPATH}
     mkdir build && cd build
     cmake .. -DCMAKE_TOOLCHAIN_FILE=${BASEPREFIX}/${i}/share/toolchain.cmake
-    make
-    DISTNAME=monero-${i}
+    make ${MAKEOPTS}
+    DISTNAME=monero-${i}-${version}
     mv bin ${DISTNAME}
     find ${DISTNAME}/ | sort | tar --no-recursion --mode='u+rw,go+r-w,a+X' --owner=0 --group=0 -c -T - | gzip -9n > ${OUTDIR}/${DISTNAME}.tar.gz
     cd ..

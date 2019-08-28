@@ -57,13 +57,10 @@ namespace epee
     {}
 
     bool init(std::function<void(size_t, uint8_t*)> rng, const std::string& bind_port = "0", const std::string& bind_ip = "0.0.0.0",
+      const std::string& bind_ipv6_address = "::", bool use_ipv6 = false, bool require_ipv4 = true,
       std::vector<std::string> access_control_origins = std::vector<std::string>(),
       boost::optional<net_utils::http::login> user = boost::none,
-      epee::net_utils::ssl_support_t ssl_support = epee::net_utils::ssl_support_t::e_ssl_support_autodetect,
-      const std::pair<std::string, std::string> &private_key_and_certificate_path = {},
-      std::list<std::string> allowed_certificates = {},
-      std::vector<std::vector<uint8_t>> allowed_fingerprints = {},
-      bool allow_any_cert = false)
+      net_utils::ssl_options_t ssl_options = net_utils::ssl_support_t::e_ssl_support_autodetect)
     {
 
       //set self as callback handler
@@ -79,8 +76,12 @@ namespace epee
 
       m_net_server.get_config_object().m_user = std::move(user);
 
-      MGINFO("Binding on " << bind_ip << ":" << bind_port);
-      bool res = m_net_server.init_server(bind_port, bind_ip, ssl_support, private_key_and_certificate_path, std::move(allowed_certificates), std::move(allowed_fingerprints), allow_any_cert);
+      MGINFO("Binding on " << bind_ip << " (IPv4):" << bind_port);
+      if (use_ipv6)
+      {
+        MGINFO("Binding on " << bind_ipv6_address << " (IPv6):" << bind_port);
+      }
+      bool res = m_net_server.init_server(bind_port, bind_ip, bind_port, bind_ipv6_address, use_ipv6, require_ipv4, std::move(ssl_options));
       if(!res)
       {
         LOG_ERROR("Failed to bind server");

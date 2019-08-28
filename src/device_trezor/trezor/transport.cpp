@@ -31,11 +31,13 @@
 #include <libusb.h>
 #endif
 
+#include <algorithm>
 #include <boost/endian/conversion.hpp>
 #include <boost/asio/io_service.hpp>
 #include <boost/asio/ip/udp.hpp>
 #include <boost/date_time/posix_time/posix_time_types.hpp>
 #include <boost/format.hpp>
+#include "common/apply_permutation.h"
 #include "transport.hpp"
 #include "messages/messages-common.pb.h"
 
@@ -93,6 +95,47 @@ namespace trezor{
     const uint32_t mask_2 = (1 << bits_2) - 1;
     CHECK_AND_ASSERT_THROW_MES(major <= mask_1 && minor <= mask_2 && patch <= mask_2, "Version numbers overflow packing scheme");
     return patch | (((uint64_t)minor) << bits_2) | (((uint64_t)major) << (bits_1 + bits_2));
+  }
+
+  typedef struct {
+    uint16_t trezor_type;
+    uint16_t id_vendor;
+    uint16_t id_product;
+  } trezor_usb_desc_t;
+
+  static trezor_usb_desc_t TREZOR_DESC_T1 = {1, 0x534C, 0x0001};
+  static trezor_usb_desc_t TREZOR_DESC_T2 = {2, 0x1209, 0x53C1};
+  static trezor_usb_desc_t TREZOR_DESC_T2_BL = {3, 0x1209, 0x53C0};
+
+  static trezor_usb_desc_t TREZOR_DESCS[] = {
+      TREZOR_DESC_T1,
+      TREZOR_DESC_T2,
+      TREZOR_DESC_T2_BL,
+  };
+
+  static size_t TREZOR_DESCS_LEN = sizeof(TREZOR_DESCS)/sizeof(TREZOR_DESCS[0]);
+
+  static ssize_t get_device_idx(uint16_t id_vendor, uint16_t id_product){
+    for(size_t i = 0; i < TREZOR_DESCS_LEN; ++i){
+      if (TREZOR_DESCS[i].id_vendor == id_vendor && TREZOR_DESCS[i].id_product == id_product){
+        return i;
+      }
+    }
+
+    return -1;
+  }
+
+  static bool is_device_supported(ssize_t device_idx){
+    CHECK_AND_ASSERT_THROW_MES(device_idx < (ssize_t)TREZOR_DESCS_LEN, "Device desc idx too big");
+    if (device_idx < 0){
+      return false;
+    }
+
+#ifdef TREZOR_1_SUPPORTED
+    return true;
+#else
+    return TREZOR_DESCS[device_idx].trezor_type != 1;
+#endif
   }
 
   //
@@ -223,6 +266,11 @@ namespace trezor{
     msg = msg_wrap;
   }
 
+  static void assert_port_number(uint32_t port)
+  {
+    CHECK_AND_ASSERT_THROW_MES(port >= 1024 && port < 65535, "Invalid port number: " << port);
+  }
+
   Transport::Transport(): m_open_counter(0) {
 
   }
@@ -263,6 +311,29 @@ namespace trezor{
 
   const char * BridgeTransport::PATH_PREFIX = "bridge:";
 
+  BridgeTransport::BridgeTransport(
+        boost::optional<std::string> device_path,
+        boost::optional<std::string> bridge_host):
+    m_device_path(device_path),
+    m_bridge_host(bridge_host ? bridge_host.get() : DEFAULT_BRIDGE),
+    m_response(boost::none),
+    m_session(boost::none),
+    m_device_info(boost::none)
+    {
+      const char *env_bridge_port = nullptr;
+      if (!bridge_host && (env_bridge_port = getenv("TREZOR_BRIDGE_PORT")) != nullptr)
+      {
+        uint16_t bridge_port;
+        CHECK_AND_ASSERT_THROW_MES(epee::string_tools::get_xtype_from_string(bridge_port, env_bridge_port), "Invalid bridge port: " << env_bridge_port);
+        assert_port_number(bridge_port);
+
+        m_bridge_host = std::string("127.0.0.1:") + boost::lexical_cast<std::string>(env_bridge_port);
+        MDEBUG("Bridge host: " << m_bridge_host);
+      }
+
+      m_http_client.set_server(m_bridge_host, boost::none, epee::net_utils::ssl_support_t::e_ssl_support_disabled);
+    }
+
   std::string BridgeTransport::get_path() const {
     if (!m_device_path){
       return "";
@@ -284,6 +355,24 @@ namespace trezor{
     for(rapidjson::Value::ConstValueIterator itr = bridge_res.Begin(); itr != bridge_res.End(); ++itr){
       auto element = itr->GetObject();
       auto t = std::make_shared<BridgeTransport>(boost::make_optional(json_get_string(element["path"])));
+
+      auto itr_vendor = element.FindMember("vendor");
+      auto itr_product = element.FindMember("product");
+      if (itr_vendor != element.MemberEnd() && itr_product != element.MemberEnd()
+        && itr_vendor->value.IsNumber() && itr_product->value.IsNumber()){
+        try {
+          const auto id_vendor = (uint16_t) itr_vendor->value.GetUint64();
+          const auto id_product = (uint16_t) itr_product->value.GetUint64();
+          const auto device_idx = get_device_idx(id_vendor, id_product);
+          if (!is_device_supported(device_idx)){
+            MDEBUG("Device with idx " << device_idx << " is not supported. Vendor: " << id_vendor << ", product: " << id_product);
+            continue;
+          }
+        } catch(const std::exception &e){
+          MERROR("Could not detect vendor & product: " << e.what());
+        }
+      }
+
       t->m_device_info.emplace();
       t->m_device_info->CopyFrom(*itr, t->m_device_info->GetAllocator());
       res.push_back(t);
@@ -401,28 +490,40 @@ namespace trezor{
   const char * UdpTransport::DEFAULT_HOST = "127.0.0.1";
   const int UdpTransport::DEFAULT_PORT = 21324;
 
+  static void parse_udp_path(std::string &host, int &port, std::string path)
+  {
+    if (boost::starts_with(path, UdpTransport::PATH_PREFIX))
+    {
+      path = path.substr(strlen(UdpTransport::PATH_PREFIX));
+    }
+
+    auto delim = path.find(':');
+    if (delim == std::string::npos) {
+      host = path;
+    } else {
+      host = path.substr(0, delim);
+      port = std::stoi(path.substr(delim + 1));
+    }
+  }
+
   UdpTransport::UdpTransport(boost::optional<std::string> device_path,
                              boost::optional<std::shared_ptr<Protocol>> proto) :
       m_io_service(), m_deadline(m_io_service)
   {
+    m_device_host = DEFAULT_HOST;
     m_device_port = DEFAULT_PORT;
+    const char *env_trezor_path = nullptr;
+
     if (device_path) {
-      const std::string device_str = device_path.get();
-      auto delim = device_str.find(':');
-      if (delim == std::string::npos) {
-        m_device_host = device_str;
-      } else {
-        m_device_host = device_str.substr(0, delim);
-        m_device_port = std::stoi(device_str.substr(delim + 1));
-      }
+      parse_udp_path(m_device_host, m_device_port, device_path.get());
+    } else if ((env_trezor_path = getenv("TREZOR_PATH")) != nullptr && boost::starts_with(env_trezor_path, UdpTransport::PATH_PREFIX)){
+      parse_udp_path(m_device_host, m_device_port, std::string(env_trezor_path));
+      MDEBUG("Applied TREZOR_PATH: " << m_device_host << ":" << m_device_port);
     } else {
       m_device_host = DEFAULT_HOST;
     }
 
-    if (m_device_port <= 1024 || m_device_port > 65535){
-      throw std::invalid_argument("Port number invalid");
-    }
-
+    assert_port_number((uint32_t)m_device_port);
     if (m_device_host != "localhost" && m_device_host != DEFAULT_HOST){
       throw std::invalid_argument("Local endpoint allowed only");
     }
@@ -670,24 +771,20 @@ namespace trezor{
 #ifdef WITH_DEVICE_TREZOR_WEBUSB
 
   static bool is_trezor1(libusb_device_descriptor * info){
-    return info->idVendor == 0x534C && info->idProduct == 0x0001;
+    return info->idVendor == TREZOR_DESC_T1.id_vendor && info->idProduct == TREZOR_DESC_T1.id_product;
   }
 
   static bool is_trezor2(libusb_device_descriptor * info){
-    return info->idVendor == 0x1209 && info->idProduct == 0x53C1;
+    return info->idVendor == TREZOR_DESC_T2.id_vendor && info->idProduct == TREZOR_DESC_T2.id_product;
   }
 
   static bool is_trezor2_bl(libusb_device_descriptor * info){
-    return info->idVendor == 0x1209 && info->idProduct == 0x53C0;
+    return info->idVendor == TREZOR_DESC_T2_BL.id_vendor && info->idProduct == TREZOR_DESC_T2_BL.id_product;
   }
 
-  static uint8_t get_trezor_dev_mask(libusb_device_descriptor * info){
-    uint8_t mask = 0;
+  static ssize_t get_trezor_dev_id(libusb_device_descriptor *info){
     CHECK_AND_ASSERT_THROW_MES(info, "Empty device descriptor");
-    mask |= is_trezor1(info) ? 1 : 0;
-    mask |= is_trezor2(info) ? 2 : 0;
-    mask |= is_trezor2_bl(info) ? 4 : 0;
-    return mask;
+    return get_device_idx(info->idVendor, info->idProduct);
   }
 
   static void set_libusb_log(libusb_context *ctx){
@@ -804,12 +901,12 @@ namespace trezor{
         continue;
       }
 
-      const auto trezor_mask = get_trezor_dev_mask(&desc);
-      if (!trezor_mask){
+      const auto trezor_dev_idx = get_trezor_dev_id(&desc);
+      if (!is_device_supported(trezor_dev_idx)){
         continue;
       }
 
-      MTRACE("Found Trezor device: " << desc.idVendor << ":" << desc.idProduct << " mask " << (int)trezor_mask);
+      MTRACE("Found Trezor device: " << desc.idVendor << ":" << desc.idProduct << " dev_idx " << (int)trezor_dev_idx);
 
       auto t = std::make_shared<WebUsbTransport>(boost::make_optional(&desc));
       t->m_bus_id = libusb_get_bus_number(devs[i]);
@@ -869,8 +966,8 @@ namespace trezor{
         continue;
       }
 
-      const auto trezor_mask = get_trezor_dev_mask(&desc);
-      if (!trezor_mask) {
+      const auto trezor_dev_idx = get_trezor_dev_id(&desc);
+      if (!is_device_supported(trezor_dev_idx)){
         continue;
       }
 
@@ -881,7 +978,7 @@ namespace trezor{
       get_libusb_ports(devs[i], path);
 
       MTRACE("Found Trezor device: " << desc.idVendor << ":" << desc.idProduct
-                                     << ", mask: " << (int)trezor_mask
+                                     << ", dev_idx: " << (int)trezor_dev_idx
                                      << ". path: " << get_usb_path(bus_id, path));
 
       if (bus_id == m_bus_id && path == m_port_numbers) {
@@ -1068,6 +1165,39 @@ namespace trezor{
       MERROR("UdpTransport enumeration failed:" << e.what());
     }
 #endif
+  }
+
+  void sort_transports_by_env(t_transport_vect & res){
+    const char *env_trezor_path = getenv("TREZOR_PATH");
+    if (!env_trezor_path){
+      return;
+    }
+    
+    // Sort transports by the longest matching prefix with TREZOR_PATH
+    std::string trezor_path(env_trezor_path);
+    std::vector<size_t> match_idx(res.size());
+    std::vector<size_t> path_permutation(res.size());
+
+    for(size_t i = 0; i < res.size(); ++i){
+      auto cpath = res[i]->get_path();
+      std::string * s1 = &trezor_path;
+      std::string * s2 = &cpath;
+      
+      // first has to be shorter in std::mismatch(). Returns first non-matching iterators.
+      if (s1->size() >= s2->size()){
+        std::swap(s1, s2);
+      }
+
+      const auto mism = std::mismatch(s1->begin(), s1->end(), s2->begin());
+      match_idx[i] = mism.first - s1->begin();
+      path_permutation[i] = i;
+    }
+
+    std::sort(path_permutation.begin(), path_permutation.end(), [&](const size_t i0, const size_t i1) {
+      return match_idx[i0] > match_idx[i1];
+    });
+
+    tools::apply_permutation(path_permutation, res);
   }
 
   std::shared_ptr<Transport> transport(const std::string & path){

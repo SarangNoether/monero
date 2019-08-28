@@ -34,6 +34,7 @@
 #include <boost/logic/tribool_fwd.hpp>
 #include <atomic>
 #include "cryptonote_basic.h"
+#include "verification_context.h"
 #include "difficulty.h"
 #include "math_helper.h"
 #ifdef _WIN32
@@ -45,7 +46,7 @@ namespace cryptonote
 
   struct i_miner_handler
   {
-    virtual bool handle_block_found(block& b) = 0;
+    virtual bool handle_block_found(block& b, block_verification_context &bvc) = 0;
     virtual bool get_block_template(block& b, const account_public_address& adr, difficulty_type& diffic, uint64_t& height, uint64_t& expected_reward, const blobdata& ex_nonce) = 0;
   protected:
     ~i_miner_handler(){};
@@ -63,7 +64,7 @@ namespace cryptonote
     static void init_options(boost::program_options::options_description& desc);
     bool set_block_template(const block& bl, const difficulty_type& diffic, uint64_t height, uint64_t block_reward);
     bool on_block_chain_update();
-    bool start(const account_public_address& adr, size_t threads_count, const boost::thread::attributes& attrs, bool do_background = false, bool ignore_battery = false);
+    bool start(const account_public_address& adr, size_t threads_count, bool do_background = false, bool ignore_battery = false);
     uint64_t get_speed() const;
     uint32_t get_threads_count() const;
     void send_stop_signal();
@@ -125,6 +126,7 @@ namespace cryptonote
     uint64_t m_height;
     volatile uint32_t m_thread_index; 
     volatile uint32_t m_threads_total;
+    std::atomic<uint32_t> m_threads_active;
     std::atomic<int32_t> m_pausers_count;
     epee::critical_section m_miners_count_lock;
 

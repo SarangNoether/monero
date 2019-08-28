@@ -27,21 +27,6 @@
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-
-/* Note about debug:
- * To debug Device you can def the following :
- * #define DEBUG_HWDEVICE
- *   Activate debug mechanism:
- *     - Add more trace
- *     - All computation done by device are checked by default device.
- *       Required IODUMMYCRYPT_HWDEVICE or IONOCRYPT_HWDEVICE for fully working
- * #define IODUMMYCRYPT_HWDEVICE 1
- *     - It assumes sensitive data encryption is is off on device side. a XOR with 0x55. This allow Ledger Class to make check on clear value
- * #define IONOCRYPT_HWDEVICE 1
- *     - It assumes sensitive data encryption is off on device side.
- */
-
-
 #pragma once
 
 #include "crypto/crypto.h"
@@ -91,6 +76,7 @@ namespace hw {
     class i_device_callback {
     public:
         virtual void on_button_request(uint64_t code=0) {}
+        virtual void on_button_pressed() {}
         virtual boost::optional<epee::wipeable_string> on_pin_request() { return boost::none; }
         virtual boost::optional<epee::wipeable_string> on_passphrase_request(bool on_device) { return boost::none; }
         virtual void on_progress(const device_progress& event) {}
@@ -211,6 +197,10 @@ namespace hw {
         /*                               TRANSACTION                               */
         /* ======================================================================= */
 
+        virtual void generate_tx_proof(const crypto::hash &prefix_hash, 
+                                       const crypto::public_key &R, const crypto::public_key &A, const boost::optional<crypto::public_key> &B, const crypto::public_key &D, const crypto::secret_key &r, 
+                                       crypto::signature &sig) = 0;
+
         virtual bool  open_tx(crypto::secret_key &tx_key) = 0;
 
         virtual bool  encrypt_payment_id(crypto::hash8 &payment_id, const crypto::public_key &public_key, const crypto::secret_key &secret_key) = 0;
@@ -219,6 +209,8 @@ namespace hw {
             // Encryption and decryption are the same operation (xor with a key)
             return encrypt_payment_id(payment_id, public_key, secret_key);
         }
+
+        virtual rct::key genCommitmentMask(const rct::key &amount_key) = 0;
 
         virtual bool  ecdhEncode(rct::ecdhTuple & unmasked, const rct::key & sharedSec, bool short_amount) = 0;
         virtual bool  ecdhDecode(rct::ecdhTuple & masked, const rct::key & sharedSec, bool short_amount) = 0;
@@ -244,6 +236,7 @@ namespace hw {
         virtual bool  compute_key_image(const cryptonote::account_keys& ack, const crypto::public_key& out_key, const crypto::key_derivation& recv_derivation, size_t real_output_index, const cryptonote::subaddress_index& received_index, cryptonote::keypair& in_ephemeral, crypto::key_image& ki) { return false; }
         virtual void  computing_key_images(bool started) {};
         virtual void  set_network_type(cryptonote::network_type network_type) { }
+        virtual void  display_address(const cryptonote::subaddress_index& index, const boost::optional<crypto::hash8> &payment_id) {}
 
     protected:
         device_mode mode;

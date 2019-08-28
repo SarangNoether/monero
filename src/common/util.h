@@ -145,7 +145,7 @@ namespace tools
   bool create_directories_if_necessary(const std::string& path);
   /*! \brief std::rename wrapper for nix and something strange for windows.
    */
-  std::error_code replace_file(const std::string& replacement_name, const std::string& replaced_name);
+  std::error_code replace_file(const std::string& old_name, const std::string& new_name);
 
   bool sanitize_locale();
 
@@ -244,4 +244,8 @@ namespace tools
   void closefrom(int fd);
 
   std::string get_human_readable_timestamp(uint64_t ts);
+
+  std::string get_human_readable_timespan(uint64_t seconds);
+
+  std::string get_human_readable_bytes(uint64_t bytes);
 }

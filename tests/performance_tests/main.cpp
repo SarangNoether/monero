@@ -38,6 +38,7 @@
 // tests
 #include "construct_tx.h"
 #include "check_tx_signature.h"
+#include "check_hash.h"
 #include "cn_slow_hash.h"
 #include "derive_public_key.h"
 #include "derive_secret_key.h"
@@ -56,7 +57,6 @@
 #include "rct_mlsag.h"
 #include "equality.h"
 #include "range_proof.h"
-#include "rct_mlsag.h"
 #include "bulletproof.h"
 #include "crypto_ops.h"
 #include "multiexp.h"
@@ -183,6 +183,14 @@ int main(int argc, char** argv)
   TEST_PERFORMANCE4(filter, p, test_check_tx_signature_aggregated_bulletproofs, 2, 2, 56, 16);
   TEST_PERFORMANCE4(filter, p, test_check_tx_signature_aggregated_bulletproofs, 10, 2, 56, 16);
 
+  TEST_PERFORMANCE4(filter, p, test_check_hash, 0, 1, 0, 1);
+  TEST_PERFORMANCE4(filter, p, test_check_hash, 0, 0xffffffffffffffff, 0, 0xffffffffffffffff);
+  TEST_PERFORMANCE4(filter, p, test_check_hash, 0, 0xffffffffffffffff, 0, 1);
+  TEST_PERFORMANCE4(filter, p, test_check_hash, 1, 0, 1, 0);
+  TEST_PERFORMANCE4(filter, p, test_check_hash, 1, 0, 0, 1);
+  TEST_PERFORMANCE4(filter, p, test_check_hash, 0xffffffffffffffff, 0xffffffffffffffff, 0, 1);
+  TEST_PERFORMANCE4(filter, p, test_check_hash, 0xffffffffffffffff, 0xffffffffffffffff, 0xffffffffffffffff, 0xffffffffffffffff);
+
   TEST_PERFORMANCE0(filter, p, test_is_out_to_acc);
   TEST_PERFORMANCE0(filter, p, test_is_out_to_acc_precomp);
   TEST_PERFORMANCE0(filter, p, test_generate_key_image_helper);
@@ -210,14 +218,8 @@ int main(int argc, char** argv)
   TEST_PERFORMANCE2(filter, p, test_sig_mlsag, 11, true); // MLSAG verification
   TEST_PERFORMANCE3(filter, p, test_sig_clsag, 11, true, 0); // CLSAG verification
 
-  TEST_PERFORMANCE3(filter, p, test_ringct_mlsag, 1, 3, false);
-  TEST_PERFORMANCE3(filter, p, test_ringct_mlsag, 1, 5, false);
-  TEST_PERFORMANCE3(filter, p, test_ringct_mlsag, 1, 10, false);
-  TEST_PERFORMANCE3(filter, p, test_ringct_mlsag, 1, 100, false);
-  TEST_PERFORMANCE3(filter, p, test_ringct_mlsag, 1, 3, true);
-  TEST_PERFORMANCE3(filter, p, test_ringct_mlsag, 1, 5, true);
-  TEST_PERFORMANCE3(filter, p, test_ringct_mlsag, 1, 10, true);
-  TEST_PERFORMANCE3(filter, p, test_ringct_mlsag, 1, 100, true);
+  TEST_PERFORMANCE2(filter, p, test_ringct_mlsag, 11, false);
+  TEST_PERFORMANCE2(filter, p, test_ringct_mlsag, 11, true);
 
   TEST_PERFORMANCE2(filter, p, test_equality, memcmp32, true);
   TEST_PERFORMANCE2(filter, p, test_equality, memcmp32, false);
@@ -246,15 +248,6 @@ int main(int argc, char** argv)
   TEST_PERFORMANCE6(filter, p, test_aggregated_bulletproof, true, 1, 8, 1, 1, 4); // 32 proofs, with 1, 2, 3, 4 amounts, 8 of each
   TEST_PERFORMANCE6(filter, p, test_aggregated_bulletproof, false, 2, 1, 1, 0, 64);
   TEST_PERFORMANCE6(filter, p, test_aggregated_bulletproof, true, 2, 1, 1, 0, 64); // 64 proof, each with 2 amounts
-
-  TEST_PERFORMANCE3(filter, p, test_ringct_mlsag, 1, 3, false);
-  TEST_PERFORMANCE3(filter, p, test_ringct_mlsag, 1, 5, false);
-  TEST_PERFORMANCE3(filter, p, test_ringct_mlsag, 1, 10, false);
-  TEST_PERFORMANCE3(filter, p, test_ringct_mlsag, 1, 100, false);
-  TEST_PERFORMANCE3(filter, p, test_ringct_mlsag, 1, 3, true);
-  TEST_PERFORMANCE3(filter, p, test_ringct_mlsag, 1, 5, true);
-  TEST_PERFORMANCE3(filter, p, test_ringct_mlsag, 1, 10, true);
-  TEST_PERFORMANCE3(filter, p, test_ringct_mlsag, 1, 100, true);
 
   TEST_PERFORMANCE1(filter, p, test_crypto_ops, op_sc_add);
   TEST_PERFORMANCE1(filter, p, test_crypto_ops, op_sc_sub);

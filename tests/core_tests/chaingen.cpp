@@ -546,6 +546,7 @@ void block_tracker::global_indices(const cryptonote::transaction *tx, std::vecto
 void block_tracker::get_fake_outs(size_t num_outs, uint64_t amount, uint64_t global_index, uint64_t cur_height, std::vector<get_outs_entry> &outs){
   auto & vct = m_outs[amount];
   const size_t n_outs = vct.size();
+  CHECK_AND_ASSERT_THROW_MES(n_outs > 0, "n_outs is 0");
 
   std::set<size_t> used;
   std::vector<size_t> choices;
@@ -1145,4 +1146,22 @@ bool test_chain_unit_base::verify(const std::string& cb_name, cryptonote::core& 
     return false;
   }
   return cb_it->second(c, ev_index, events);
+}
+
+bool test_chain_unit_base::check_block_verification_context(const cryptonote::block_verification_context& bvc, size_t event_idx, const cryptonote::block& /*blk*/)
+{
+  return !bvc.m_verifivation_failed;
+}
+
+bool test_chain_unit_base::check_tx_verification_context(const cryptonote::tx_verification_context& tvc, bool /*tx_added*/, size_t /*event_index*/, const cryptonote::transaction& /*tx*/)
+{
+  return !tvc.m_verifivation_failed;
+}
+
+bool test_chain_unit_base::check_tx_verification_context_array(const std::vector<cryptonote::tx_verification_context>& tvcs, size_t /*tx_added*/, size_t /*event_index*/, const std::vector<cryptonote::transaction>& /*txs*/)
+{
+  for (const cryptonote::tx_verification_context &tvc: tvcs)
+    if (tvc.m_verifivation_failed)
+      return false;
+  return true;
 }

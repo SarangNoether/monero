@@ -29,6 +29,9 @@
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
 #pragma once
+
+#include "string_tools.h"
+
 #include "cryptonote_protocol/cryptonote_protocol_defs.h"
 #include "cryptonote_basic/cryptonote_basic.h"
 #include "cryptonote_basic/difficulty.h"
@@ -84,7 +87,7 @@ namespace cryptonote
 // advance which version they will stop working with
 // Don't go over 32767 for any of these
 #define CORE_RPC_VERSION_MAJOR 2
-#define CORE_RPC_VERSION_MINOR 4
+#define CORE_RPC_VERSION_MINOR 10
 #define MAKE_CORE_RPC_VERSION(major,minor) (((major)<<16)|(minor))
 #define CORE_RPC_VERSION MAKE_CORE_RPC_VERSION(CORE_RPC_VERSION_MAJOR, CORE_RPC_VERSION_MINOR)
 
@@ -102,11 +105,13 @@ namespace cryptonote
       uint64_t 	 height;
       std::string status;
       bool untrusted;
+      std::string hash;
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(height)
         KV_SERIALIZE(status)
         KV_SERIALIZE(untrusted)
+        KV_SERIALIZE(hash)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<response_t> response;
@@ -252,223 +257,6 @@ namespace cryptonote
   };
 
   //-----------------------------------------------
-  struct COMMAND_RPC_GET_ADDRESS_TXS
-  {
-      struct request_t
-      {
-        std::string address;
-        std::string view_key;
-
-        BEGIN_KV_SERIALIZE_MAP()
-          KV_SERIALIZE(address)
-          KV_SERIALIZE(view_key)
-        END_KV_SERIALIZE_MAP()
-      };
-      typedef epee::misc_utils::struct_init<request_t> request;
-      
-      struct spent_output {
-        uint64_t amount;
-        std::string key_image;
-        std::string tx_pub_key;
-        uint64_t out_index;
-        uint32_t mixin;
-        
-        
-        BEGIN_KV_SERIALIZE_MAP()
-          KV_SERIALIZE(amount)
-          KV_SERIALIZE(key_image)
-          KV_SERIALIZE(tx_pub_key)
-          KV_SERIALIZE(out_index)
-          KV_SERIALIZE(mixin)
-        END_KV_SERIALIZE_MAP()
-      };
-      
-      struct transaction
-      {
-        uint64_t id;
-        std::string hash;
-        uint64_t timestamp;
-        uint64_t total_received;
-        uint64_t total_sent;
-        uint64_t unlock_time;
-        uint64_t height;
-        std::list<spent_output> spent_outputs;
-        std::string payment_id;
-        bool coinbase;
-        bool mempool;
-        uint32_t mixin;
-
-        BEGIN_KV_SERIALIZE_MAP()
-          KV_SERIALIZE(id)
-          KV_SERIALIZE(hash)
-          KV_SERIALIZE(timestamp)
-          KV_SERIALIZE(total_received)
-          KV_SERIALIZE(total_sent)
-          KV_SERIALIZE(unlock_time)
-          KV_SERIALIZE(height)
-          KV_SERIALIZE(spent_outputs)
-          KV_SERIALIZE(payment_id)
-          KV_SERIALIZE(coinbase)
-          KV_SERIALIZE(mempool)
-          KV_SERIALIZE(mixin)
-        END_KV_SERIALIZE_MAP()
-      };
-      
-      
-      struct response_t
-      {
-        //std::list<std::string> txs_as_json;
-        uint64_t total_received;
-        uint64_t total_received_unlocked = 0; // OpenMonero only
-        uint64_t scanned_height;
-        std::vector<transaction> transactions;
-        uint64_t blockchain_height;
-        uint64_t scanned_block_height;
-        std::string status;
-        BEGIN_KV_SERIALIZE_MAP()
-          KV_SERIALIZE(total_received)
-          KV_SERIALIZE(total_received_unlocked)
-          KV_SERIALIZE(scanned_height)
-          KV_SERIALIZE(transactions)
-          KV_SERIALIZE(blockchain_height)
-          KV_SERIALIZE(scanned_block_height)
-          KV_SERIALIZE(status)
-        END_KV_SERIALIZE_MAP()
-      };
-      typedef epee::misc_utils::struct_init<response_t> response;
-  };
-  
-  //-----------------------------------------------
-  struct COMMAND_RPC_GET_ADDRESS_INFO
-  {
-      struct request_t
-      {
-        std::string address;
-        std::string view_key;
-
-        BEGIN_KV_SERIALIZE_MAP()
-          KV_SERIALIZE(address)
-          KV_SERIALIZE(view_key)
-        END_KV_SERIALIZE_MAP()
-      };
-      typedef epee::misc_utils::struct_init<request_t> request;
-      
-      struct spent_output 
-      {
-        uint64_t amount;
-        std::string key_image;
-        std::string tx_pub_key;
-        uint64_t  out_index;
-        uint32_t  mixin;
-        
-        BEGIN_KV_SERIALIZE_MAP()
-          KV_SERIALIZE(amount)
-          KV_SERIALIZE(key_image)
-          KV_SERIALIZE(tx_pub_key)
-          KV_SERIALIZE(out_index)
-          KV_SERIALIZE(mixin)
-        END_KV_SERIALIZE_MAP()
-      };
- 
-      struct response_t
-      { 
-        uint64_t locked_funds;
-        uint64_t total_received;
-        uint64_t total_sent;
-        uint64_t scanned_height;
-        uint64_t scanned_block_height;
-        uint64_t start_height;
-        uint64_t transaction_height;
-        uint64_t blockchain_height;
-        std::list<spent_output> spent_outputs;
-        BEGIN_KV_SERIALIZE_MAP()
-          KV_SERIALIZE(locked_funds)
-          KV_SERIALIZE(total_received)
-          KV_SERIALIZE(total_sent)        
-          KV_SERIALIZE(scanned_height)
-          KV_SERIALIZE(scanned_block_height)
-          KV_SERIALIZE(start_height)
-          KV_SERIALIZE(transaction_height)
-          KV_SERIALIZE(blockchain_height)
-          KV_SERIALIZE(spent_outputs)
-        END_KV_SERIALIZE_MAP()
-      };
-      typedef epee::misc_utils::struct_init<response_t> response;
-  };
-  
-  //-----------------------------------------------
-  struct COMMAND_RPC_GET_UNSPENT_OUTS
-  {
-      struct request_t
-      {
-        std::string amount;
-        std::string address;
-        std::string view_key;
-        // OpenMonero specific
-        uint64_t mixin;
-        bool use_dust;
-        std::string dust_threshold;
-
-        BEGIN_KV_SERIALIZE_MAP()
-          KV_SERIALIZE(amount)
-          KV_SERIALIZE(address)
-          KV_SERIALIZE(view_key)
-          KV_SERIALIZE(mixin)
-          KV_SERIALIZE(use_dust)
-          KV_SERIALIZE(dust_threshold)
-        END_KV_SERIALIZE_MAP()
-      };
-      typedef epee::misc_utils::struct_init<request_t> request;
-    
-      
-      struct output {
-        uint64_t amount;
-        std::string public_key;
-        uint64_t  index;
-        uint64_t global_index;
-        std::string rct;
-        std::string tx_hash;
-        std::string tx_pub_key;
-        std::string tx_prefix_hash;
-        std::vector<std::string> spend_key_images;
-        uint64_t timestamp;
-        uint64_t height;                
-
-
-        BEGIN_KV_SERIALIZE_MAP()
-          KV_SERIALIZE(amount)
-          KV_SERIALIZE(public_key)
-          KV_SERIALIZE(index)
-          KV_SERIALIZE(global_index)
-          KV_SERIALIZE(rct)
-          KV_SERIALIZE(tx_hash)
-          KV_SERIALIZE(tx_pub_key)
-          KV_SERIALIZE(tx_prefix_hash)
-          KV_SERIALIZE(spend_key_images)  
-          KV_SERIALIZE(timestamp)  
-          KV_SERIALIZE(height)                                    
-        END_KV_SERIALIZE_MAP()
-      };
-      
-      struct response_t
-      {
-        uint64_t amount;
-        std::list<output> outputs;
-        uint64_t per_kb_fee;
-        std::string status;
-        std::string reason;
-        BEGIN_KV_SERIALIZE_MAP()
-          KV_SERIALIZE(amount)
-          KV_SERIALIZE(outputs)
-          KV_SERIALIZE(per_kb_fee)
-          KV_SERIALIZE(status)
-          KV_SERIALIZE(reason)
-        END_KV_SERIALIZE_MAP()
-      };
-      typedef epee::misc_utils::struct_init<response_t> response;
-  };
-  
-  //-----------------------------------------------
   struct COMMAND_RPC_GET_RANDOM_OUTS
   {
       struct request_t
@@ -548,72 +336,6 @@ namespace cryptonote
       typedef epee::misc_utils::struct_init<response_t> response;
   };
   //-----------------------------------------------
-  struct COMMAND_RPC_LOGIN
-  {
-      struct request_t
-      {
-        std::string address;
-        std::string view_key;
-        bool create_account;
-
-        BEGIN_KV_SERIALIZE_MAP()
-          KV_SERIALIZE(address)
-          KV_SERIALIZE(view_key) 
-          KV_SERIALIZE(create_account) 
-        END_KV_SERIALIZE_MAP()
-      };
-      typedef epee::misc_utils::struct_init<request_t> request;
-
-      struct response_t
-      {
-        std::string status;
-        std::string reason;
-        bool new_address;
-        
-        BEGIN_KV_SERIALIZE_MAP()
-          KV_SERIALIZE(status)
-          KV_SERIALIZE(reason)
-          KV_SERIALIZE(new_address)
-        END_KV_SERIALIZE_MAP()
-      };
-      typedef epee::misc_utils::struct_init<response_t> response;
-  };
-  //-----------------------------------------------
-  struct COMMAND_RPC_IMPORT_WALLET_REQUEST
-  {
-      struct request_t
-      {
-        std::string address;
-        std::string view_key;
-        
-        BEGIN_KV_SERIALIZE_MAP()
-          KV_SERIALIZE(address)
-          KV_SERIALIZE(view_key)
-        END_KV_SERIALIZE_MAP()
-      };
-      typedef epee::misc_utils::struct_init<request_t> request;
-
-      struct response_t
-      {
-        std::string payment_id;
-        uint64_t import_fee;
-        bool new_request;
-        bool request_fulfilled;
-        std::string payment_address;
-        std::string status;
-        
-        BEGIN_KV_SERIALIZE_MAP()
-          KV_SERIALIZE(payment_id)
-          KV_SERIALIZE(import_fee)
-          KV_SERIALIZE(new_request)
-          KV_SERIALIZE(request_fulfilled)
-          KV_SERIALIZE(payment_address)
-          KV_SERIALIZE(status)            
-        END_KV_SERIALIZE_MAP()
-      };
-      typedef epee::misc_utils::struct_init<response_t> response;
-  };
-  //-----------------------------------------------
   struct COMMAND_RPC_GET_TRANSACTIONS
   {
     struct request_t
@@ -645,6 +367,7 @@ namespace cryptonote
       uint64_t block_height;
       uint64_t block_timestamp;
       std::vector<uint64_t> output_indices;
+      bool relayed;
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(tx_hash)
@@ -655,9 +378,16 @@ namespace cryptonote
         KV_SERIALIZE(as_json)
         KV_SERIALIZE(in_pool)
         KV_SERIALIZE(double_spend_seen)
-        KV_SERIALIZE(block_height)
-        KV_SERIALIZE(block_timestamp)
-        KV_SERIALIZE(output_indices)
+        if (!this_ref.in_pool)
+        {
+          KV_SERIALIZE(block_height)
+          KV_SERIALIZE(block_timestamp)
+          KV_SERIALIZE(output_indices)
+        }
+        else
+        {
+          KV_SERIALIZE(relayed)
+        }
       END_KV_SERIALIZE_MAP()
     };
 
@@ -811,9 +541,11 @@ namespace cryptonote
     struct request_t
     {
       std::vector<get_outputs_out> outputs;
+      bool get_txid;
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(outputs)
+        KV_SERIALIZE(get_txid)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<request_t> request;
@@ -856,10 +588,12 @@ namespace cryptonote
     {
       std::string tx_as_hex;
       bool do_not_relay;
+      bool do_sanity_checks;
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(tx_as_hex)
         KV_SERIALIZE_OPT(do_not_relay, false)
+        KV_SERIALIZE_OPT(do_sanity_checks, true)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<request_t> request;
@@ -878,6 +612,8 @@ namespace cryptonote
       bool overspend;
       bool fee_too_low;
       bool not_rct;
+      bool too_few_outputs;
+      bool sanity_check_failed;
       bool untrusted;
 
       BEGIN_KV_SERIALIZE_MAP()
@@ -892,6 +628,8 @@ namespace cryptonote
         KV_SERIALIZE(overspend)
         KV_SERIALIZE(fee_too_low)
         KV_SERIALIZE(not_rct)
+        KV_SERIALIZE(too_few_outputs)
+        KV_SERIALIZE(sanity_check_failed)
         KV_SERIALIZE(untrusted)
       END_KV_SERIALIZE_MAP()
     };
@@ -943,6 +681,8 @@ namespace cryptonote
       uint64_t height;
       uint64_t target_height;
       uint64_t difficulty;
+      std::string wide_difficulty;
+      uint64_t difficulty_top64;
       uint64_t target;
       uint64_t tx_count;
       uint64_t tx_pool_size;
@@ -958,6 +698,8 @@ namespace cryptonote
       std::string nettype;
       std::string top_block_hash;
       uint64_t cumulative_difficulty;
+      std::string wide_cumulative_difficulty;
+      uint64_t cumulative_difficulty_top64;
       uint64_t block_size_limit;
       uint64_t block_weight_limit;
       uint64_t block_size_median;
@@ -978,6 +720,8 @@ namespace cryptonote
         KV_SERIALIZE(height)
         KV_SERIALIZE(target_height)
         KV_SERIALIZE(difficulty)
+        KV_SERIALIZE(wide_difficulty)
+        KV_SERIALIZE(difficulty_top64)
         KV_SERIALIZE(target)
         KV_SERIALIZE(tx_count)
         KV_SERIALIZE(tx_pool_size)
@@ -993,6 +737,8 @@ namespace cryptonote
         KV_SERIALIZE(nettype)
         KV_SERIALIZE(top_block_hash)
         KV_SERIALIZE(cumulative_difficulty)
+        KV_SERIALIZE(wide_cumulative_difficulty)
+        KV_SERIALIZE(cumulative_difficulty_top64)
         KV_SERIALIZE(block_size_limit)
         KV_SERIALIZE_OPT(block_weight_limit, (uint64_t)0)
         KV_SERIALIZE(block_size_median)
@@ -1013,6 +759,39 @@ namespace cryptonote
   };
 
     
+  //-----------------------------------------------
+  struct COMMAND_RPC_GET_NET_STATS
+  {
+    struct request_t
+    {
+
+      BEGIN_KV_SERIALIZE_MAP()
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+
+
+    struct response_t
+    {
+      std::string status;
+      uint64_t start_time;
+      uint64_t total_packets_in;
+      uint64_t total_bytes_in;
+      uint64_t total_packets_out;
+      uint64_t total_bytes_out;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(status)
+        KV_SERIALIZE(start_time)
+        KV_SERIALIZE(total_packets_in)
+        KV_SERIALIZE(total_bytes_in)
+        KV_SERIALIZE(total_packets_out)
+        KV_SERIALIZE(total_bytes_out)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<response_t> response;
+  };
+
   //-----------------------------------------------
   struct COMMAND_RPC_STOP_MINING
   {
@@ -1063,6 +842,9 @@ namespace cryptonote
       uint8_t bg_target;
       uint32_t block_target;
       uint64_t block_reward;
+      uint64_t difficulty;
+      std::string wide_difficulty;
+      uint64_t difficulty_top64;
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(status)
@@ -1078,6 +860,9 @@ namespace cryptonote
         KV_SERIALIZE(bg_target)
         KV_SERIALIZE(block_target)
         KV_SERIALIZE(block_reward)
+        KV_SERIALIZE(difficulty)
+        KV_SERIALIZE(wide_difficulty)
+        KV_SERIALIZE(difficulty_top64)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<response_t> response;
@@ -1138,10 +923,14 @@ namespace cryptonote
     {
       uint64_t reserve_size;       //max 255 bytes
       std::string wallet_address;
+      std::string prev_block;
+      std::string extra_nonce;
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(reserve_size)
         KV_SERIALIZE(wallet_address)
+        KV_SERIALIZE(prev_block)
+        KV_SERIALIZE(extra_nonce)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<request_t> request;
@@ -1149,6 +938,8 @@ namespace cryptonote
     struct response_t
     {
       uint64_t difficulty;
+      std::string wide_difficulty;
+      uint64_t difficulty_top64;
       uint64_t height;
       uint64_t reserved_offset;
       uint64_t expected_reward;
@@ -1160,6 +951,8 @@ namespace cryptonote
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(difficulty)
+        KV_SERIALIZE(wide_difficulty)
+        KV_SERIALIZE(difficulty_top64)
         KV_SERIALIZE(height)
         KV_SERIALIZE(reserved_offset)
         KV_SERIALIZE(expected_reward)
@@ -1194,10 +987,14 @@ namespace cryptonote
     {
       uint64_t amount_of_blocks;
       std::string wallet_address;
+      std::string prev_block;
+      uint32_t starting_nonce;
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(amount_of_blocks)
         KV_SERIALIZE(wallet_address)
+        KV_SERIALIZE(prev_block)
+        KV_SERIALIZE_OPT(starting_nonce, (uint32_t)0)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<request_t> request;
@@ -1205,10 +1002,12 @@ namespace cryptonote
     struct response_t
     {
       uint64_t height;
+      std::vector<std::string> blocks;
       std::string status;
       
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(height)
+        KV_SERIALIZE(blocks)
         KV_SERIALIZE(status)
       END_KV_SERIALIZE_MAP()
     };
@@ -1226,14 +1025,19 @@ namespace cryptonote
       uint64_t height;
       uint64_t depth;
       std::string hash;
-      difficulty_type difficulty;
-      difficulty_type cumulative_difficulty;
+      uint64_t difficulty;
+      std::string wide_difficulty;
+      uint64_t difficulty_top64;
+      uint64_t cumulative_difficulty;
+      std::string wide_cumulative_difficulty;
+      uint64_t cumulative_difficulty_top64;
       uint64_t reward;
       uint64_t block_size;
       uint64_t block_weight;
       uint64_t num_txes;
       std::string pow_hash;
       uint64_t long_term_weight;
+      std::string miner_tx_hash;
       
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(major_version)
@@ -1246,13 +1050,18 @@ namespace cryptonote
         KV_SERIALIZE(depth)
         KV_SERIALIZE(hash)
         KV_SERIALIZE(difficulty)
+        KV_SERIALIZE(wide_difficulty)
+        KV_SERIALIZE(difficulty_top64)
         KV_SERIALIZE(cumulative_difficulty)
+        KV_SERIALIZE(wide_cumulative_difficulty)
+        KV_SERIALIZE(cumulative_difficulty_top64)
         KV_SERIALIZE(reward)
         KV_SERIALIZE(block_size)
         KV_SERIALIZE_OPT(block_weight, (uint64_t)0)
         KV_SERIALIZE(num_txes)
         KV_SERIALIZE(pow_hash)
         KV_SERIALIZE_OPT(long_term_weight, (uint64_t)0)
+        KV_SERIALIZE(miner_tx_hash)
       END_KV_SERIALIZE_MAP()
   };
 
@@ -1289,10 +1098,12 @@ namespace cryptonote
     struct request_t
     {
       std::string hash;
+      std::vector<std::string> hashes;
       bool fill_pow_hash;
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(hash)
+        KV_SERIALIZE(hashes)
         KV_SERIALIZE_OPT(fill_pow_hash, false);
       END_KV_SERIALIZE_MAP()
     };
@@ -1302,10 +1113,12 @@ namespace cryptonote
     {
       std::string status;
       block_header_response block_header;
+      std::vector<block_header_response> block_headers;
       bool untrusted;
       
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(block_header)
+        KV_SERIALIZE(block_headers)
         KV_SERIALIZE(status)
         KV_SERIALIZE(untrusted)
       END_KV_SERIALIZE_MAP()
@@ -1395,8 +1208,11 @@ namespace cryptonote
     peer(uint64_t id, const std::string &host, uint64_t last_seen, uint32_t pruning_seed, uint16_t rpc_port)
       : id(id), host(host), ip(0), port(0), rpc_port(rpc_port), last_seen(last_seen), pruning_seed(pruning_seed)
     {}
+    peer(uint64_t id, const std::string &host, uint16_t port, uint64_t last_seen, uint32_t pruning_seed, uint16_t rpc_port)
+      : id(id), host(host), ip(0), port(port), rpc_port(rpc_port), last_seen(last_seen), pruning_seed(pruning_seed)
+    {}
     peer(uint64_t id, uint32_t ip, uint16_t port, uint64_t last_seen, uint32_t pruning_seed, uint16_t rpc_port)
-      : id(id), host(std::to_string(ip)), ip(ip), port(port), rpc_port(rpc_port), last_seen(last_seen), pruning_seed(pruning_seed)
+      : id(id), host(epee::string_tools::get_ip_string_from_int32(ip)), ip(ip), port(port), rpc_port(rpc_port), last_seen(last_seen), pruning_seed(pruning_seed)
     {}
 
     BEGIN_KV_SERIALIZE_MAP()
@@ -1414,7 +1230,10 @@ namespace cryptonote
   {
     struct request_t
     {
+      bool public_only;
+
       BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE_OPT(public_only, true)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<request_t> request;
@@ -1429,6 +1248,54 @@ namespace cryptonote
         KV_SERIALIZE(status)
         KV_SERIALIZE(white_list)
         KV_SERIALIZE(gray_list)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<response_t> response;
+  };
+
+  struct public_node
+  {
+    std::string host;
+    uint64_t last_seen;
+    uint16_t rpc_port;
+
+    public_node() = delete;
+
+    public_node(const peer &peer)
+      : host(peer.host), last_seen(peer.last_seen), rpc_port(peer.rpc_port)
+    {}
+
+    BEGIN_KV_SERIALIZE_MAP()
+      KV_SERIALIZE(host)
+      KV_SERIALIZE(last_seen)
+      KV_SERIALIZE(rpc_port)
+    END_KV_SERIALIZE_MAP()
+  };
+
+  struct COMMAND_RPC_GET_PUBLIC_NODES
+  {
+    struct request_t
+    {
+      bool gray;
+      bool white;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE_OPT(gray, false)
+        KV_SERIALIZE_OPT(white, true)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+
+    struct response_t
+    {
+      std::string status;
+      std::vector<public_node> gray;
+      std::vector<public_node> white;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(status)
+        KV_SERIALIZE(gray)
+        KV_SERIALIZE(white)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<response_t> response;
@@ -1781,6 +1648,33 @@ namespace cryptonote
     typedef epee::misc_utils::struct_init<response_t> response;
   };
 
+  struct COMMAND_RPC_SET_BOOTSTRAP_DAEMON
+  {
+    struct request_t
+    {
+      std::string address;
+      std::string username;
+      std::string password;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(address)
+        KV_SERIALIZE(username)
+        KV_SERIALIZE(password)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+
+    struct response_t
+    {
+      std::string status;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(status)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<response_t> response;
+  };
+
   struct COMMAND_RPC_STOP_DAEMON
   {
     struct request_t
@@ -1880,8 +1774,10 @@ namespace cryptonote
   {
     struct request_t
     {
-	  uint64_t out_peers;
+      bool set;
+      uint32_t out_peers;
       BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE_OPT(set, true)
         KV_SERIALIZE(out_peers)
       END_KV_SERIALIZE_MAP()
     };
@@ -1889,9 +1785,11 @@ namespace cryptonote
     
     struct response_t
     {
+      uint32_t out_peers;
       std::string status;
 
       BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(out_peers)
         KV_SERIALIZE(status)
       END_KV_SERIALIZE_MAP()
     };
@@ -1902,8 +1800,10 @@ namespace cryptonote
   {
     struct request_t
     {
-      uint64_t in_peers;
+      bool set;
+      uint32_t in_peers;
       BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE_OPT(set, true)
         KV_SERIALIZE(in_peers)
       END_KV_SERIALIZE_MAP()
     };
@@ -1911,55 +1811,17 @@ namespace cryptonote
 
     struct response_t
     {
+      uint32_t in_peers;
       std::string status;
 
       BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(in_peers)
         KV_SERIALIZE(status)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<response_t> response;
   };
     
-  struct COMMAND_RPC_START_SAVE_GRAPH
-  {
-    struct request_t
-    {
-      BEGIN_KV_SERIALIZE_MAP()
-      END_KV_SERIALIZE_MAP()
-    };
-    typedef epee::misc_utils::struct_init<request_t> request;
-    
-    struct response_t
-    {
-	  std::string status;
-	  
-      BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE(status)
-      END_KV_SERIALIZE_MAP()
-    };
-    typedef epee::misc_utils::struct_init<response_t> response;
-  };
-  
-  struct COMMAND_RPC_STOP_SAVE_GRAPH
-  {
-    struct request_t
-    {
-      BEGIN_KV_SERIALIZE_MAP()
-      END_KV_SERIALIZE_MAP()
-    };
-    typedef epee::misc_utils::struct_init<request_t> request;
-    
-    struct response_t
-    {
-	  std::string status;
-	  
-      BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE(status)
-      END_KV_SERIALIZE_MAP()
-    };
-    typedef epee::misc_utils::struct_init<response_t> response;
-  };
-
   struct COMMAND_RPC_HARD_FORK_INFO
   {
     struct request_t
@@ -2074,6 +1936,33 @@ namespace cryptonote
     typedef epee::misc_utils::struct_init<response_t> response;
   };
 
+  struct COMMAND_RPC_BANNED
+  {
+    struct request_t
+    {
+      std::string address;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(address)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+
+    struct response_t
+    {
+      std::string status;
+      bool banned;
+      uint32_t seconds;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(status)
+        KV_SERIALIZE(banned)
+        KV_SERIALIZE(seconds)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<response_t> response;
+  };
+
   struct COMMAND_RPC_FLUSH_TRANSACTION_POOL
   {
     struct request_t
@@ -2164,11 +2053,13 @@ namespace cryptonote
     {
       std::string status;
       uint32_t version;
+      bool release;
       bool untrusted;
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(status)
         KV_SERIALIZE(version)
+        KV_SERIALIZE(release)
         KV_SERIALIZE(untrusted)
       END_KV_SERIALIZE_MAP()
     };
@@ -2248,6 +2139,8 @@ namespace cryptonote
       uint64_t height;
       uint64_t length;
       uint64_t difficulty;
+      std::string wide_difficulty;
+      uint64_t difficulty_top64;
       std::vector<std::string> block_hashes;
       std::string main_chain_parent_block;
 
@@ -2256,6 +2149,8 @@ namespace cryptonote
         KV_SERIALIZE(height)
         KV_SERIALIZE(length)
         KV_SERIALIZE(difficulty)
+        KV_SERIALIZE(wide_difficulty)
+        KV_SERIALIZE(difficulty_top64)
         KV_SERIALIZE(block_hashes)
         KV_SERIALIZE(main_chain_parent_block)
       END_KV_SERIALIZE_MAP()
@@ -2264,7 +2159,7 @@ namespace cryptonote
     struct response_t
     {
       std::string status;
-      std::list<chain_info> chains;
+      std::vector<chain_info> chains;
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(status)
@@ -2514,11 +2409,13 @@ namespace cryptonote
 
     struct response_t
     {
+      bool pruned;
       uint32_t pruning_seed;
       std::string status;
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(status)
+        KV_SERIALIZE(pruned)
         KV_SERIALIZE(pruning_seed)
       END_KV_SERIALIZE_MAP()
     };

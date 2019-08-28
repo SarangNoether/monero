@@ -43,10 +43,11 @@ t_command_server::t_command_server(
     uint32_t ip
   , uint16_t port
   , const boost::optional<tools::login>& login
+  , const epee::net_utils::ssl_options_t& ssl_options
   , bool is_rpc
   , cryptonote::core_rpc_server* rpc_server
   )
-  : m_parser(ip, port, login, is_rpc, rpc_server)
+  : m_parser(ip, port, login, ssl_options, is_rpc, rpc_server)
   , m_command_lookup()
   , m_is_rpc(is_rpc)
 {
@@ -76,6 +77,11 @@ t_command_server::t_command_server(
       "print_cn"
     , std::bind(&t_command_parser_executor::print_connections, &m_parser, p::_1)
     , "Print the current connections."
+    );
+  m_command_lookup.set_handler(
+      "print_net_stats"
+    , std::bind(&t_command_parser_executor::print_net_stats, &m_parser, p::_1)
+    , "Print network statistics."
     );
   m_command_lookup.set_handler(
       "print_bc"
@@ -209,16 +215,6 @@ t_command_server::t_command_server(
     , "Set the <max_number> of in peers."
     );
     m_command_lookup.set_handler(
-      "start_save_graph"
-    , std::bind(&t_command_parser_executor::start_save_graph, &m_parser, p::_1)
-    , "Start saving data for dr monero."
-    );
-    m_command_lookup.set_handler(
-      "stop_save_graph"
-    , std::bind(&t_command_parser_executor::stop_save_graph, &m_parser, p::_1)
-    , "Stop saving data for dr monero."
-    );
-    m_command_lookup.set_handler(
       "hard_fork_info"
     , std::bind(&t_command_parser_executor::hard_fork_info, &m_parser, p::_1)
     , "Print the hard fork voting information."
@@ -237,8 +233,14 @@ t_command_server::t_command_server(
     m_command_lookup.set_handler(
       "unban"
     , std::bind(&t_command_parser_executor::unban, &m_parser, p::_1)
-    , "unban <IP>"
+    , "unban <address>"
     , "Unban a given <IP>."
+    );
+    m_command_lookup.set_handler(
+      "banned"
+    , std::bind(&t_command_parser_executor::banned, &m_parser, p::_1)
+    , "banned <address>"
+    , "Check whether an <address> is banned."
     );
     m_command_lookup.set_handler(
       "flush_txpool"

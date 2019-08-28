@@ -65,6 +65,15 @@ namespace epee
 namespace net_utils
 {
 
+namespace
+{
+	boost::asio::ssl::context& get_context(connection_basic_shared_state* state)
+	{
+		CHECK_AND_ASSERT_THROW_MES(state != nullptr, "state shared_ptr cannot be null");
+		return state->ssl_context;
+	}
+}
+
   std::string to_string(t_connection_type type)
   {
 	  if (type == e_connection_type_NET)
@@ -119,56 +128,54 @@ connection_basic_pimpl::connection_basic_pimpl(const std::string &name) : m_thro
 int connection_basic_pimpl::m_default_tos;
 
 // methods:
-connection_basic::connection_basic(boost::asio::ip::tcp::socket&& sock, boost::shared_ptr<socket_stats> stats, ssl_support_t ssl_support, ssl_context_t &ssl_context)
+connection_basic::connection_basic(boost::asio::ip::tcp::socket&& sock, boost::shared_ptr<connection_basic_shared_state> state, ssl_support_t ssl_support)
 	:
-	m_stats(std::move(stats)),
+	m_state(std::move(state)),
 	mI( new connection_basic_pimpl("peer") ),
 	strand_(GET_IO_SERVICE(sock)),
-	socket_(GET_IO_SERVICE(sock), ssl_context.context),
+	socket_(GET_IO_SERVICE(sock), get_context(m_state.get())),
 	m_want_close_connection(false),
 	m_was_shutdown(false),
-	m_ssl_support(ssl_support),
-	m_ssl_context(ssl_context)
+	m_ssl_support(ssl_support)
 {
 	// add nullptr checks if removed
-	CHECK_AND_ASSERT_THROW_MES(bool(m_stats), "stats shared_ptr cannot be null");
+	assert(m_state != nullptr); // release runtime check in get_context
 
         socket_.next_layer() = std::move(sock);
 
-	++(m_stats->sock_count); // increase the global counter
-	mI->m_peer_number = m_stats->sock_number.fetch_add(1); // use, and increase the generated number
+	++(m_state->sock_count); // increase the global counter
+	mI->m_peer_number = m_state->sock_number.fetch_add(1); // use, and increase the generated number
 
 	std::string remote_addr_str = "?";
 	try { boost::system::error_code e; remote_addr_str = socket().remote_endpoint(e).address().to_string(); } catch(...){} ;
 
-	_note("Spawned connection #"<<mI->m_peer_number<<" to " << remote_addr_str << " currently we have sockets count:" << m_stats->sock_count);
+	_note("Spawned connection #"<<mI->m_peer_number<<" to " << remote_addr_str << " currently we have sockets count:" << m_state->sock_count);
 }
 
-connection_basic::connection_basic(boost::asio::io_service &io_service, boost::shared_ptr<socket_stats> stats, ssl_support_t ssl_support, ssl_context_t &ssl_context)
+connection_basic::connection_basic(boost::asio::io_service &io_service, boost::shared_ptr<connection_basic_shared_state> state, ssl_support_t ssl_support)
 	:
-	m_stats(std::move(stats)),
+	m_state(std::move(state)),
 	mI( new connection_basic_pimpl("peer") ),
 	strand_(io_service),
-	socket_(io_service, ssl_context.context),
-	m_want_close_connection(false), 
+	socket_(io_service, get_context(m_state.get())),
+	m_want_close_connection(false),
 	m_was_shutdown(false),
-	m_ssl_support(ssl_support),
-	m_ssl_context(ssl_context)
+	m_ssl_support(ssl_support)
 {
 	// add nullptr checks if removed
-	CHECK_AND_ASSERT_THROW_MES(bool(m_stats), "stats shared_ptr cannot be null");
+	assert(m_state != nullptr); // release runtime check in get_context
 
-	++(m_stats->sock_count); // increase the global counter
-	mI->m_peer_number = m_stats->sock_number.fetch_add(1); // use, and increase the generated number
+	++(m_state->sock_count); // increase the global counter
+	mI->m_peer_number = m_state->sock_number.fetch_add(1); // use, and increase the generated number
 
 	std::string remote_addr_str = "?";
 	try { boost::system::error_code e; remote_addr_str = socket().remote_endpoint(e).address().to_string(); } catch(...){} ;
 
-	_note("Spawned connection #"<<mI->m_peer_number<<" to " << remote_addr_str << " currently we have sockets count:" << m_stats->sock_count);
+	_note("Spawned connection #"<<mI->m_peer_number<<" to " << remote_addr_str << " currently we have sockets count:" << m_state->sock_count);
 }
 
 connection_basic::~connection_basic() noexcept(false) {
-	--(m_stats->sock_count);
+	--(m_state->sock_count);
 
 	std::string remote_addr_str = "?";
 	try { boost::system::error_code e; remote_addr_str = socket().remote_endpoint(e).address().to_string(); } catch(...){} ;
@@ -275,9 +282,6 @@ double connection_basic::get_sleep_time(size_t cb) {
 	CRITICAL_REGION_LOCAL(epee::net_utils::network_throttle_manager::network_throttle_manager::m_lock_get_global_throttle_out);
     auto t = network_throttle_manager::get_global_throttle_out().get_sleep_time(cb);
     return t;
-}
-
-void connection_basic::set_save_graph(bool save_graph) {
 }
 
 

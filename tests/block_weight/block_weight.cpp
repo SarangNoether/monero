@@ -84,6 +84,11 @@ public:
     while (count-- && start_height < blocks.size()) ret.push_back(blocks[start_height++].long_term_weight);
     return ret;
   }
+  virtual crypto::hash get_block_hash_from_height(const uint64_t &height) const override {
+    crypto::hash hash = crypto::null_hash;
+    *(uint64_t*)&hash = height;
+    return hash;
+  }
   virtual crypto::hash top_block_hash(uint64_t *block_height = NULL) const override {
     uint64_t h = height();
     crypto::hash top = crypto::null_hash;
@@ -190,8 +195,10 @@ static void test(test_t t, uint64_t blocks)
 
 int main()
 {
+  TRY_ENTRY();
   test(test_max, 2 * LONG_TERM_BLOCK_WEIGHT_WINDOW);
   test(test_lcg, 9 * LONG_TERM_BLOCK_WEIGHT_WINDOW);
   test(test_min, 1 * LONG_TERM_BLOCK_WEIGHT_WINDOW);
   return 0;
+  CATCH_ENTRY_L0("main", 1);
 }

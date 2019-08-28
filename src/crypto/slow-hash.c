@@ -43,7 +43,6 @@
 #include "CryptonightR_JIT.h"
 
 #include <errno.h>
-#include <string.h>
 
 #define MEMORY         (1 << 21) // 2MB scratchpad
 #define ITER           (1 << 20)
@@ -897,7 +896,6 @@ void cn_slow_hash(const void *data, size_t length, char *hash, int variant, int 
 
     // locals to avoid constant TLS dereferencing
     uint8_t *local_hp_state = hp_state;
-    v4_random_math_JIT_func local_hp_jitfunc = hp_jitfunc;
 
     /* CryptoNight Step 1:  Use Keccak1600 to initialize the 'state' (and 'text') buffers from the data. */
     if (prehashed) {

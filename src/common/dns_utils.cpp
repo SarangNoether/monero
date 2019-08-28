@@ -32,9 +32,9 @@
 
 #include <stdlib.h>
 #include "include_base_utils.h"
-#include <random>
+#include "common/threadpool.h"
+#include "crypto/crypto.h"
 #include <boost/thread/mutex.hpp>
-#include <boost/thread/thread.hpp>
 #include <boost/algorithm/string/join.hpp>
 #include <boost/optional.hpp>
 using namespace epee;
@@ -48,7 +48,6 @@ static const char *DEFAULT_DNS_PUBLIC_ADDR[] =
   "80.67.169.40",       // FDN (France)
   "89.233.43.71",       // http://censurfridns.dk (Denmark)
   "109.69.8.51",        // punCAT (Spain)
-  "77.109.148.137",     // Xiala.net (Switzerland)
   "193.58.251.251",     // SkyDNS (Russia)
 };
 
@@ -517,22 +516,19 @@ bool load_txt_records_from_dns(std::vector<std::string> &good_records, const std
   std::vector<std::vector<std::string> > records;
   records.resize(dns_urls.size());
 
-  std::random_device rd;
-  std::mt19937 gen(rd());
-  std::uniform_int_distribution<int> dis(0, dns_urls.size() - 1);
-  size_t first_index = dis(gen);
+  size_t first_index = crypto::rand_idx(dns_urls.size());
 
   // send all requests in parallel
-  std::vector<boost::thread> threads(dns_urls.size());
   std::deque<bool> avail(dns_urls.size(), false), valid(dns_urls.size(), false);
+  tools::threadpool& tpool = tools::threadpool::getInstance();
+  tools::threadpool::waiter waiter;
   for (size_t n = 0; n < dns_urls.size(); ++n)
   {
-    threads[n] = boost::thread([n, dns_urls, &records, &avail, &valid](){
+    tpool.submit(&waiter,[n, dns_urls, &records, &avail, &valid](){
       records[n] = tools::DNSResolver::instance().get_txt_record(dns_urls[n], avail[n], valid[n]); 
     });
   }
-  for (size_t n = 0; n < dns_urls.size(); ++n)
-    threads[n].join();
+  waiter.wait(&tpool);
 
   size_t cur_index = first_index;
   do

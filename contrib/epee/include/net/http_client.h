@@ -274,12 +274,8 @@ namespace net_utils
 			reciev_machine_state m_state;
 			chunked_state m_chunked_state;
 			std::string m_chunked_cache;
+			bool m_auto_connect;
 			critical_section m_lock;
-			epee::net_utils::ssl_support_t m_ssl_support;
-			std::pair<std::string, std::string> m_ssl_private_key_and_certificate_path;
-			std::list<std::string> m_ssl_allowed_certificates;
-			std::vector<std::vector<uint8_t>> m_ssl_allowed_fingerprints;
-			bool m_ssl_allow_any_cert;
 
 		public:
 			explicit http_simple_client_template()
@@ -296,35 +292,35 @@ namespace net_utils
 				, m_state()
 				, m_chunked_state()
 				, m_chunked_cache()
+				, m_auto_connect(true)
 				, m_lock()
-				, m_ssl_support(epee::net_utils::ssl_support_t::e_ssl_support_autodetect)
 			{}
 
 			const std::string &get_host() const { return m_host_buff; };
 			const std::string &get_port() const { return m_port; };
 
-			bool set_server(const std::string& address, boost::optional<login> user, epee::net_utils::ssl_support_t ssl_support = epee::net_utils::ssl_support_t::e_ssl_support_autodetect, const std::pair<std::string, std::string> &private_key_and_certificate_path = {}, const std::list<std::string> &allowed_ssl_certificates = {}, const std::vector<std::vector<uint8_t>> &allowed_ssl_fingerprints = {}, bool allow_any_cert = false)
+			bool set_server(const std::string& address, boost::optional<login> user, ssl_options_t ssl_options = ssl_support_t::e_ssl_support_autodetect)
 			{
 				http::url_content parsed{};
 				const bool r = parse_url(address, parsed);
 				CHECK_AND_ASSERT_MES(r, false, "failed to parse url: " << address);
-				set_server(std::move(parsed.host), std::to_string(parsed.port), std::move(user), ssl_support, private_key_and_certificate_path, allowed_ssl_certificates, allowed_ssl_fingerprints, allow_any_cert);
+				set_server(std::move(parsed.host), std::to_string(parsed.port), std::move(user), std::move(ssl_options));
 				return true;
 			}
 
-			void set_server(std::string host, std::string port, boost::optional<login> user, epee::net_utils::ssl_support_t ssl_support = epee::net_utils::ssl_support_t::e_ssl_support_autodetect, const std::pair<std::string, std::string> &private_key_and_certificate_path = {}, const std::list<std::string> &allowed_ssl_certificates = {}, const std::vector<std::vector<uint8_t>> &allowed_ssl_fingerprints = {}, bool allow_any_cert = false)
+			void set_server(std::string host, std::string port, boost::optional<login> user, ssl_options_t ssl_options = ssl_support_t::e_ssl_support_autodetect)
 			{
 				CRITICAL_REGION_LOCAL(m_lock);
 				disconnect();
 				m_host_buff = std::move(host);
 				m_port = std::move(port);
                                 m_auth = user ? http_client_auth{std::move(*user)} : http_client_auth{};
-				m_ssl_support = ssl_support;
-				m_ssl_private_key_and_certificate_path = private_key_and_certificate_path;
-				m_ssl_allowed_certificates = allowed_ssl_certificates;
-				m_ssl_allowed_fingerprints = allowed_ssl_fingerprints;
-				m_ssl_allow_any_cert = allow_any_cert;
-				m_net_client.set_ssl(m_ssl_support, m_ssl_private_key_and_certificate_path, m_ssl_allowed_certificates, m_ssl_allowed_fingerprints, m_ssl_allow_any_cert);
+				m_net_client.set_ssl(std::move(ssl_options));
+			}
+
+			void set_auto_connect(bool auto_connect)
+			{
+				m_auto_connect = auto_connect;
 			}
 
 			template<typename F>
@@ -378,6 +374,11 @@ namespace net_utils
 				CRITICAL_REGION_LOCAL(m_lock);
 				if(!is_connected())
 				{
+					if (!m_auto_connect)
+					{
+						MWARNING("Auto connect attempt to " << m_host_buff << ":" << m_port << " disabled");
+						return false;
+					}
 					MDEBUG("Reconnecting...");
 					if(!connect(timeout))
 					{
@@ -453,6 +454,16 @@ namespace net_utils
 				m_net_client.set_test_data(s);
 				m_state = reciev_machine_state_header;
 				return handle_reciev(timeout);
+			}
+			//---------------------------------------------------------------------------
+			uint64_t get_bytes_sent() const
+			{
+				return m_net_client.get_bytes_sent();
+			}
+			//---------------------------------------------------------------------------
+			uint64_t get_bytes_received() const
+			{
+				return m_net_client.get_bytes_received();
 			}
 			//---------------------------------------------------------------------------
 		private: 
@@ -841,21 +852,21 @@ namespace net_utils
 				const char *ptr = m_header_cache.c_str();
 				CHECK_AND_ASSERT_MES(!memcmp(ptr, "HTTP/", 5), false, "Invalid first response line: " + m_header_cache);
 				ptr += 5;
-				CHECK_AND_ASSERT_MES(isdigit(*ptr), false, "Invalid first response line: " + m_header_cache);
+				CHECK_AND_ASSERT_MES(epee::misc_utils::parse::isdigit(*ptr), false, "Invalid first response line: " + m_header_cache);
 				unsigned long ul;
 				char *end;
 				ul = strtoul(ptr, &end, 10);
 				CHECK_AND_ASSERT_MES(ul <= INT_MAX && *end =='.', false, "Invalid first response line: " + m_header_cache);
 				m_response_info.m_http_ver_hi = ul;
 				ptr = end + 1;
-				CHECK_AND_ASSERT_MES(isdigit(*ptr), false, "Invalid first response line: " + m_header_cache + ", ptr: " << ptr);
+				CHECK_AND_ASSERT_MES(epee::misc_utils::parse::isdigit(*ptr), false, "Invalid first response line: " + m_header_cache + ", ptr: " << ptr);
 				ul = strtoul(ptr, &end, 10);
 				CHECK_AND_ASSERT_MES(ul <= INT_MAX && isblank(*end), false, "Invalid first response line: " + m_header_cache + ", ptr: " << ptr);
 				m_response_info.m_http_ver_lo = ul;
 				ptr = end + 1;
 				while (isblank(*ptr))
 					++ptr;
-				CHECK_AND_ASSERT_MES(isdigit(*ptr), false, "Invalid first response line: " + m_header_cache);
+				CHECK_AND_ASSERT_MES(epee::misc_utils::parse::isdigit(*ptr), false, "Invalid first response line: " + m_header_cache);
 				ul = strtoul(ptr, &end, 10);
 				CHECK_AND_ASSERT_MES(ul >= 100 && ul <= 999 && isspace(*end), false, "Invalid first response line: " + m_header_cache);
 				m_response_info.m_response_code = ul;

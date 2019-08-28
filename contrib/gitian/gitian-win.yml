@@ -100,7 +100,15 @@ script: |
   create_per-host_linker_wrapper "2000-01-01 12:00:00"
   export PATH=${WRAP_DIR}:${PATH}
 
+  git config --global core.abbrev 9
   cd monero
+  # Set the version string that gets added to the tar archive name
+  version="`git describe`"
+  if [[ $version == *"-"*"-"* ]]; then
+    version="`git rev-parse --short=9 HEAD`"
+    version="`echo $version | head -c 9`"
+  fi
+
   BASEPREFIX=`pwd`/contrib/depends
   # Build dependencies for each host
   for i in $HOSTS; do
@@ -108,7 +116,7 @@ script: |
     if [ -d "$EXTRA_INCLUDES" ]; then
       export HOST_ID_SALT="$EXTRA_INCLUDES"
     fi
-    make ${MAKEOPTS} -C ${BASEPREFIX} HOST="${i}" -j 4 V=1
+    make ${MAKEOPTS} -C ${BASEPREFIX} HOST="${i}" V=1
     unset HOST_ID_SALT
   done
 
@@ -125,8 +133,8 @@ script: |
     export PATH=${BASEPREFIX}/${i}/native/bin:${ORIGPATH}
     mkdir build && cd build
     cmake .. -DCMAKE_TOOLCHAIN_FILE=${BASEPREFIX}/${i}/share/toolchain.cmake
-    make
-    DISTNAME=monero-${i}
+    make ${MAKEOPTS}
+    DISTNAME=monero-${i}-${version}
     mv bin ${DISTNAME}
     find ${DISTNAME}/ | sort | zip -X@ ${OUTDIR}/${DISTNAME}.zip
     cd .. && rm -rf build

@@ -37,6 +37,7 @@
 #include <set>
 #include <ctime>
 #include <iostream>
+#include <stdexcept>
 
 //  Public interface for libwallet library
 namespace Monero {
@@ -337,6 +338,7 @@ protected:
     bool m_indeterminate;
 };
 
+struct Wallet;
 struct WalletListener
 {
     virtual ~WalletListener() = 0;
@@ -381,7 +383,12 @@ struct WalletListener
     /**
      * @brief called by device if the action is required
      */
-    virtual void onDeviceButtonRequest(uint64_t code) {}
+    virtual void onDeviceButtonRequest(uint64_t code) { (void)code; }
+
+    /**
+     * @brief called by device if the button was pressed
+     */
+    virtual void onDeviceButtonPressed() { }
 
     /**
      * @brief called by device when PIN is needed
@@ -401,7 +408,12 @@ struct WalletListener
     /**
      * @brief Signalizes device operation progress
      */
-    virtual void onDeviceProgress(const DeviceProgress & event) {};
+    virtual void onDeviceProgress(const DeviceProgress & event) { (void)event; };
+
+    /**
+     * @brief If the listener is created before the wallet this enables to set created wallet object
+     */
+    virtual void onSetWallet(Wallet * wallet) { (void)wallet; };
 };
 
 
@@ -440,8 +452,8 @@ struct Wallet
     //! returns both error and error string atomically. suggested to use in instead of status() and errorString()
     virtual void statusWithErrorString(int& status, std::string& errorString) const = 0;
     virtual bool setPassword(const std::string &password) = 0;
-    virtual bool setDevicePin(const std::string &password) { return false; };
-    virtual bool setDevicePassphrase(const std::string &password) { return false; };
+    virtual bool setDevicePin(const std::string &pin) { (void)pin; return false; };
+    virtual bool setDevicePassphrase(const std::string &passphrase) { (void)passphrase; return false; };
     virtual std::string address(uint32_t accountIndex = 0, uint32_t addressIndex = 0) const = 0;
     std::string mainAddress() const { return address(0, 0); }
     virtual std::string path() const = 0;
@@ -800,6 +812,26 @@ struct Wallet
      * @return PendingTransaction
      */
     virtual PendingTransaction*  restoreMultisigTransaction(const std::string& signData) = 0;
+
+    /*!
+     * \brief createTransactionMultDest creates transaction with multiple destinations. if dst_addr is an integrated address, payment_id is ignored
+     * \param dst_addr                  vector of destination address as string
+     * \param payment_id                optional payment_id, can be empty string
+     * \param amount                    vector of amounts
+     * \param mixin_count               mixin count. if 0 passed, wallet will use default value
+     * \param subaddr_account           subaddress account from which the input funds are taken
+     * \param subaddr_indices           set of subaddress indices to use for transfer or sweeping. if set empty, all are chosen when sweeping, and one or more are automatically chosen when transferring. after execution, returns the set of actually used indices
+     * \param priority
+     * \return                          PendingTransaction object. caller is responsible to check PendingTransaction::status()
+     *                                  after object returned
+     */
+
+    virtual PendingTransaction * createTransactionMultDest(const std::vector<std::string> &dst_addr, const std::string &payment_id,
+                                                   optional<std::vector<uint64_t>> amount, uint32_t mixin_count,
+                                                   PendingTransaction::Priority = PendingTransaction::Priority_Low,
+                                                   uint32_t subaddr_account = 0,
+                                                   std::set<uint32_t> subaddr_indices = {}) = 0;
+
     /*!
      * \brief createTransaction creates transaction. if dst_addr is an integrated address, payment_id is ignored
      * \param dst_addr          destination address as string
@@ -878,6 +910,19 @@ struct Wallet
      */
     virtual void setDefaultMixin(uint32_t arg) = 0;
 
+    /*!
+     * \brief setCacheAttribute - attach an arbitrary string to a wallet cache attribute
+     * \param key - the key
+     * \param val - the value
+     * \return true if successful, false otherwise
+     */
+    virtual bool setCacheAttribute(const std::string &key, const std::string &val) = 0;
+    /*!
+     * \brief getCacheAttribute - return an arbitrary string attached to a wallet cache attribute
+     * \param key - the key
+     * \return the attached string, or empty string if there is none
+     */
+    virtual std::string getCacheAttribute(const std::string &key) const = 0;
     /*!
      * \brief setUserNote - attach an arbitrary string note to a txid
      * \param txid - the transaction id to attach the note to
@@ -991,6 +1036,9 @@ struct Wallet
 
     //! cold-device protocol key image sync
     virtual uint64_t coldKeyImageSync(uint64_t &spent, uint64_t &unspent) = 0;
+
+    //! shows address on device display
+    virtual void deviceShowAddress(uint32_t accountIndex, uint32_t addressIndex, const std::string &paymentId) = 0;
 };
 
 /**
@@ -1020,9 +1068,10 @@ struct WalletManager
      * \param  password       Password of wallet file
      * \param  nettype        Network type
      * \param  kdf_rounds     Number of rounds for key derivation function
+     * \param  listener       Wallet listener to set to the wallet after creation
      * \return                Wallet instance (Wallet::status() needs to be called to check if opened successfully)
      */
-    virtual Wallet * openWallet(const std::string &path, const std::string &password, NetworkType nettype, uint64_t kdf_rounds = 1) = 0;
+    virtual Wallet * openWallet(const std::string &path, const std::string &password, NetworkType nettype, uint64_t kdf_rounds = 1, WalletListener * listener = nullptr) = 0;
     Wallet * openWallet(const std::string &path, const std::string &password, bool testnet = false)     // deprecated
     {
         return openWallet(path, password, testnet ? TESTNET : MAINNET);
@@ -1134,6 +1183,7 @@ struct WalletManager
      * \param  restoreHeight        restore from start height (0 sets to current height)
      * \param  subaddressLookahead  Size of subaddress lookahead (empty sets to some default low value)
      * \param  kdf_rounds           Number of rounds for key derivation function
+     * \param  listener             Wallet listener to set to the wallet after creation
      * \return                      Wallet instance (Wallet::status() needs to be called to check if recovered successfully)
      */
     virtual Wallet * createWalletFromDevice(const std::string &path,
@@ -1142,7 +1192,8 @@ struct WalletManager
                                             const std::string &deviceName,
                                             uint64_t restoreHeight = 0,
                                             const std::string &subaddressLookahead = "",
-                                            uint64_t kdf_rounds = 1) = 0;
+                                            uint64_t kdf_rounds = 1,
+                                            WalletListener * listener = nullptr) = 0;
 
     /*!
      * \brief Closes wallet. In case operation succeeded, wallet object deleted. in case operation failed, wallet object not deleted

@@ -129,6 +129,15 @@ struct tx_data_t
 };
 #pragma pack(pop)
 
+struct alt_block_data_t
+{
+  uint64_t height;
+  uint64_t cumulative_weight;
+  uint64_t cumulative_difficulty_low;
+  uint64_t cumulative_difficulty_high;
+  uint64_t already_generated_coins;
+};
+
 /**
  * @brief a struct containing txpool per transaction metadata
  */
@@ -754,6 +763,21 @@ public:
   virtual void batch_stop() = 0;
 
   /**
+   * @brief aborts a batch transaction
+   *
+   * If the subclass implements batching, this function should abort the
+   * batch it is currently on.
+   *
+   * If no batch is in-progress, this function should throw a DB_ERROR.
+   * This exception may change in the future if it is deemed necessary to
+   * have a more granular exception type for this scenario.
+   *
+   * If any of this cannot be done, the subclass should throw the corresponding
+   * subclass of DB_EXCEPTION
+   */
+  virtual void batch_abort() = 0;
+
+  /**
    * @brief sets whether or not to batch transactions
    *
    * If the subclass implements batching, this function tells it to begin
@@ -770,9 +794,12 @@ public:
    */
   virtual void set_batch_transactions(bool) = 0;
 
-  virtual void block_txn_start(bool readonly=false) = 0;
-  virtual void block_txn_stop() = 0;
-  virtual void block_txn_abort() = 0;
+  virtual void block_wtxn_start() = 0;
+  virtual void block_wtxn_stop() = 0;
+  virtual void block_wtxn_abort() = 0;
+  virtual bool block_rtxn_start() const = 0;
+  virtual void block_rtxn_stop() const = 0;
+  virtual void block_rtxn_abort() const = 0;
 
   virtual void set_hard_fork(HardFork* hf);
 
@@ -1514,6 +1541,57 @@ public:
   virtual bool check_pruning() = 0;
 
   /**
+   * @brief get the max block size
+   */
+  virtual uint64_t get_max_block_size() = 0;
+
+  /**
+   * @brief add a new max block size
+   *
+   * The max block size will be the maximum of sz and the current block size
+   *
+   * @param: sz the block size
+   */
+  virtual void add_max_block_size(uint64_t sz) = 0;
+
+  /**
+   * @brief add a new alternative block
+   *
+   * @param: blkid the block hash
+   * @param: data: the metadata for the block
+   * @param: blob: the block's blob
+   */
+  virtual void add_alt_block(const crypto::hash &blkid, const cryptonote::alt_block_data_t &data, const cryptonote::blobdata &blob) = 0;
+
+  /**
+   * @brief get an alternative block by hash
+   *
+   * @param: blkid the block hash
+   * @param: data: the metadata for the block
+   * @param: blob: the block's blob
+   *
+   * @return true if the block was found in the alternative blocks list, false otherwise
+   */
+  virtual bool get_alt_block(const crypto::hash &blkid, alt_block_data_t *data, cryptonote::blobdata *blob) = 0;
+
+  /**
+   * @brief remove an alternative block
+   *
+   * @param: blkid the block hash
+   */
+  virtual void remove_alt_block(const crypto::hash &blkid) = 0;
+
+  /**
+   * @brief get the number of alternative blocks stored
+   */
+  virtual uint64_t get_alt_block_count() = 0;
+
+  /**
+   * @brief drop all alternative blocks
+   */
+  virtual void drop_alt_blocks() = 0;
+
+  /**
    * @brief runs a function over all txpool transactions
    *
    * The subclass should run the passed function for each txpool tx it has
@@ -1602,6 +1680,23 @@ public:
   virtual bool for_all_outputs(std::function<bool(uint64_t amount, const crypto::hash &tx_hash, uint64_t height, size_t tx_idx)> f) const = 0;
   virtual bool for_all_outputs(uint64_t amount, const std::function<bool(uint64_t height)> &f) const = 0;
 
+  /**
+   * @brief runs a function over all alternative blocks stored
+   *
+   * The subclass should run the passed function for each alt block it has
+   * stored, passing (blkid, data, blob) as its parameters.
+   *
+   * If any call to the function returns false, the subclass should return
+   * false.  Otherwise, the subclass returns true.
+   *
+   * The subclass should throw DB_ERROR if any of the expected values are
+   * not found.  Current implementations simply return false.
+   *
+   * @param std::function f the function to run
+   *
+   * @return false if the function returns false for any output, otherwise true
+   */
+  virtual bool for_all_alt_blocks(std::function<bool(const crypto::hash &blkid, const alt_block_data_t &data, const cryptonote::blobdata *blob)> f, bool include_blob = false) const = 0;
 
 
   //
@@ -1684,6 +1779,52 @@ public:
   mutable epee::critical_section m_synchronization_lock;  //!< A lock, currently for when BlockchainLMDB needs to resize the backing db file
 
 };  // class BlockchainDB
+
+class db_txn_guard
+{
+public:
+  db_txn_guard(BlockchainDB *db, bool readonly): db(db), readonly(readonly), active(false)
+  {
+    if (readonly)
+    {
+      active = db->block_rtxn_start();
+    }
+    else
+    {
+      db->block_wtxn_start();
+      active = true;
+    }
+  }
+  virtual ~db_txn_guard()
+  {
+    if (active)
+      stop();
+  }
+  void stop()
+  {
+    if (readonly)
+      db->block_rtxn_stop();
+    else
+      db->block_wtxn_stop();
+    active = false;
+  }
+  void abort()
+  {
+    if (readonly)
+      db->block_rtxn_abort();
+    else
+      db->block_wtxn_abort();
+    active = false;
+  }
+
+private:
+  BlockchainDB *db;
+  bool readonly;
+  bool active;
+};
+
+class db_rtxn_guard: public db_txn_guard { public: db_rtxn_guard(BlockchainDB *db): db_txn_guard(db, true) {} };
+class db_wtxn_guard: public db_txn_guard { public: db_wtxn_guard(BlockchainDB *db): db_txn_guard(db, false) {} };
 
 BlockchainDB *new_db(const std::string& db_type);
 
