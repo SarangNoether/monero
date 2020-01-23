@@ -172,6 +172,7 @@ namespace rct {
         BEGIN_SERIALIZE_OBJECT()
             FIELD(s)
             FIELD(c1)
+            FIELD(D)
         END_SERIALIZE()
     };
 

@@ -303,8 +303,8 @@ namespace rct {
         scalarmultKey(aH,H,a);
 
         // Aggregation hashes
-        keyV mu_P_to_hash(2*n+5); // 0, I, D, P, C, Pi, Ci
-        keyV mu_C_to_hash(2*n+5); // 1, I, D, P, C, Pi, Ci
+        keyV mu_P_to_hash(2*n+3); // 0, I, D, P, C
+        keyV mu_C_to_hash(2*n+3); // 1, I, D, P, C
         sc_0(mu_P_to_hash[0].bytes);
         mu_P_to_hash[1] = sig.I;
         mu_P_to_hash[2] = sig.D;
@@ -320,10 +320,6 @@ namespace rct {
             mu_P_to_hash[i] = C[i-n-3];
             mu_C_to_hash[i] = C[i-n-3];
         }
-        sc_0(mu_P_to_hash[2*n+3].bytes);
-        sc_0(mu_P_to_hash[2*n+4].bytes);
-        sc_0(mu_C_to_hash[2*n+3].bytes);
-        sc_0(mu_C_to_hash[2*n+4].bytes);
         key mu_P, mu_C;
         mu_P = hash_to_scalar(mu_P_to_hash);
         mu_C = hash_to_scalar(mu_C_to_hash);
@@ -426,8 +422,8 @@ namespace rct {
         precomp(D_precomp.k,D_8);
 
         // Aggregation hashes
-        keyV mu_P_to_hash(2*n+5); // 0, I, D, P, C, Pi, Ci
-        keyV mu_C_to_hash(2*n+5); // 1, I, D, P, C, Pi, Ci
+        keyV mu_P_to_hash(2*n+3); // 0, I, D, P, C
+        keyV mu_C_to_hash(2*n+3); // 1, I, D, P, C
         sc_0(mu_P_to_hash[0].bytes);
         mu_P_to_hash[1] = sig.I;
         mu_P_to_hash[2] = sig.D;
@@ -443,10 +439,6 @@ namespace rct {
             mu_P_to_hash[i] = C[i-n-3];
             mu_C_to_hash[i] = C[i-n-3];
         }
-        sc_0(mu_P_to_hash[2*n+3].bytes);
-        sc_0(mu_P_to_hash[2*n+4].bytes);
-        sc_0(mu_C_to_hash[2*n+3].bytes);
-        sc_0(mu_C_to_hash[2*n+4].bytes);
         key mu_P, mu_C;
         mu_P = hash_to_scalar(mu_P_to_hash);
         mu_C = hash_to_scalar(mu_C_to_hash);
