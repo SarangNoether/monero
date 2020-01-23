@@ -499,22 +499,22 @@ namespace rct {
         ge_tobytes(aAbB.bytes, &rv);
     }
 
-    // addKeys_aGbBcC
-    // computes aG + bB + cC
-    // G is the fixed basepoint and B,C require precomputation
-    void addKeys_aGbBcC(key &aGbBcC, const key &a, const key &b, const ge_dsmp B, const key &c, const ge_dsmp C) {
+    // addKeys_aGbBcCdD
+    // computes aG + bB + cC + dD
+    // G is the fixed basepoint and B,C,D require precomputation
+    void addKeys_aGbBcCdD(key &aGbBcCdD, const key &a, const key &b, const ge_dsmp B, const key &c, const ge_dsmp C, const key &d, const ge_dsmp D) {
         ge_p2 rv;
-        ge_triple_scalarmult_base_vartime(&rv, a.bytes, b.bytes, B, c.bytes, C);
-        ge_tobytes(aGbBcC.bytes, &rv);
+        ge_quad_scalarmult_base_vartime(&rv, a.bytes, b.bytes, B, c.bytes, C, d.bytes, D);
+        ge_tobytes(aGbBcCdD.bytes, &rv);
     }
 
-    // addKeys_aAbBcC
-    // computes aA + bB + cC
-    // A,B,C require precomputation
-    void addKeys_aAbBcC(key &aAbBcC, const key &a, const ge_dsmp A, const key &b, const ge_dsmp B, const key &c, const ge_dsmp C) {
+    // addKeys_aAbBcCdD
+    // computes aA + bB + cC + dD
+    // A,B,C,D require precomputation
+    void addKeys_aAbBcCdD(key &aAbBcCdD, const key &a, const ge_dsmp A, const key &b, const ge_dsmp B, const key &c, const ge_dsmp C, const key &d, const ge_dsmp D) {
         ge_p2 rv;
-        ge_triple_scalarmult_precomp_vartime(&rv, a.bytes, A, b.bytes, B, c.bytes, C);
-        ge_tobytes(aAbBcC.bytes, &rv);
+        ge_quad_scalarmult_precomp_vartime(&rv, a.bytes, A, b.bytes, B, c.bytes, C, d.bytes, D);
+        ge_tobytes(aAbBcCdD.bytes, &rv);
     }
 
     //subtract Keys (subtracts curve points)

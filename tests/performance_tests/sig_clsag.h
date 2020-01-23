@@ -50,17 +50,21 @@ public:
 
     p = rct::skGen();
     z = rct::skGen();
+    w = rct::skGen();
     P = rct::skvGen(n);
     C = rct::skvGen(n);
+    T = rct::skvGen(n);
     for (size_t i = 0 ; i < n; i++)
     {
         P[i] = rct::scalarmultBase(P[i]);
         C[i] = rct::scalarmultBase(C[i]);
+        T[i] = rct::scalarmultBase(T[i]);
     }
     P[l] = rct::scalarmultBase(p);
     C[l] = rct::scalarmultBase(z);
+    T[l] = rct::scalarmultBase(w);
     
-    sig = CLSAG_Gen(rct::identity(),P,p,C,z,l,NULL);
+    sig = CLSAG_Gen(rct::identity(),P,p,C,z,T,w,l,NULL);
 
     return true;
   }
@@ -68,16 +72,18 @@ public:
   bool test()
   {
     if (ver)
-      return CLSAG_Ver(rct::identity(),P,C,sig);
+      return CLSAG_Ver(rct::identity(),P,C,T,sig);
     else
-      CLSAG_Gen(rct::identity(),P,p,C,z,l,NULL);
+      CLSAG_Gen(rct::identity(),P,p,C,z,T,w,l,NULL);
     return true;
   }
 
 private:
   rct::key p;
   rct::key z;
+  rct::key w;
   rct::keyV P;
   rct::keyV C;
+  rct::keyV T;
   rct::clsag sig;
 };

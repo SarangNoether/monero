@@ -145,8 +145,8 @@ namespace rct {
     void addKeys3(key &aAbB, const key &a, const key &A, const key &b, const ge_dsmp B);
     void addKeys3(key &aAbB, const key &a, const ge_dsmp A, const key &b, const ge_dsmp B);
 
-    void addKeys_aGbBcC(key &aGbBcC, const key &a, const key &b, const ge_dsmp B, const key &c, const ge_dsmp C);
-    void addKeys_aAbBcC(key &aAbBcC, const key &a, const ge_dsmp A, const key &b, const ge_dsmp B, const key &c, const ge_dsmp C);
+    void addKeys_aGbBcCdD(key &aGbBcCdD, const key &a, const key &b, const ge_dsmp B, const key &c, const ge_dsmp C, const key &d, const ge_dsmp D);
+    void addKeys_aAbBcCdD(key &aAbBcCdD, const key &a, const ge_dsmp A, const key &b, const ge_dsmp B, const key &c, const ge_dsmp C, const key &d, const ge_dsmp D);
 
     //AB = A - B where A, B are curve points
     void subKeys(key &AB, const key &A, const  key &B);

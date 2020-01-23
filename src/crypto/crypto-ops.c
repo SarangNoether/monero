@@ -1234,11 +1234,12 @@ void ge_double_scalarmult_base_vartime(ge_p2 *r, const unsigned char *a, const g
   }
 }
 
-// Computes aG + bB + cC (G is the fixed basepoint)
-void ge_triple_scalarmult_base_vartime(ge_p2 *r, const unsigned char *a, const unsigned char *b, const ge_dsmp Bi, const unsigned char *c, const ge_dsmp Ci) {
+// Computes aG + bB + cC + dD (G is the fixed basepoint)
+void ge_quad_scalarmult_base_vartime(ge_p2 *r, const unsigned char *a, const unsigned char *b, const ge_dsmp Bi, const unsigned char *c, const ge_dsmp Ci, const unsigned char *d, const ge_dsmp Di) {
   signed char aslide[256];
   signed char bslide[256];
   signed char cslide[256];
+  signed char dslide[256];
   ge_p1p1 t;
   ge_p3 u;
   int i;
@@ -1246,11 +1247,12 @@ void ge_triple_scalarmult_base_vartime(ge_p2 *r, const unsigned char *a, const u
   slide(aslide, a);
   slide(bslide, b);
   slide(cslide, c);
+  slide(dslide, d);
 
   ge_p2_0(r);
 
   for (i = 255; i >= 0; --i) {
-    if (aslide[i] || bslide[i] || cslide[i]) break;
+    if (aslide[i] || bslide[i] || cslide[i] || dslide[i]) break;
   }
 
   for (; i >= 0; --i) {
@@ -1278,6 +1280,14 @@ void ge_triple_scalarmult_base_vartime(ge_p2 *r, const unsigned char *a, const u
     } else if (cslide[i] < 0) {
       ge_p1p1_to_p3(&u, &t);
       ge_sub(&t, &u, &Ci[(-cslide[i])/2]);
+    }
+
+    if (dslide[i] > 0) {
+      ge_p1p1_to_p3(&u, &t);
+      ge_add(&t, &u, &Di[dslide[i]/2]);
+    } else if (dslide[i] < 0) {
+      ge_p1p1_to_p3(&u, &t);
+      ge_sub(&t, &u, &Di[(-dslide[i])/2]);
     }
 
     ge_p1p1_to_p2(r, &t);
@@ -2198,11 +2208,12 @@ void ge_double_scalarmult_precomp_vartime2(ge_p2 *r, const unsigned char *a, con
   }
 }
 
-// Computes aA + bB + cC (all points require precomputation)
-void ge_triple_scalarmult_precomp_vartime(ge_p2 *r, const unsigned char *a, const ge_dsmp Ai, const unsigned char *b, const ge_dsmp Bi, const unsigned char *c, const ge_dsmp Ci) {
+// Computes aA + bB + cC + dD (all points require precomputation)
+void ge_quad_scalarmult_precomp_vartime(ge_p2 *r, const unsigned char *a, const ge_dsmp Ai, const unsigned char *b, const ge_dsmp Bi, const unsigned char *c, const ge_dsmp Ci, const unsigned char *d, const ge_dsmp Di) {
   signed char aslide[256];
   signed char bslide[256];
   signed char cslide[256];
+  signed char dslide[256];
   ge_p1p1 t;
   ge_p3 u;
   int i;
@@ -2210,11 +2221,12 @@ void ge_triple_scalarmult_precomp_vartime(ge_p2 *r, const unsigned char *a, cons
   slide(aslide, a);
   slide(bslide, b);
   slide(cslide, c);
+  slide(dslide, d);
 
   ge_p2_0(r);
 
   for (i = 255; i >= 0; --i) {
-    if (aslide[i] || bslide[i] || cslide[i]) break;
+    if (aslide[i] || bslide[i] || cslide[i] || dslide[i]) break;
   }
 
   for (; i >= 0; --i) {
@@ -2242,6 +2254,14 @@ void ge_triple_scalarmult_precomp_vartime(ge_p2 *r, const unsigned char *a, cons
     } else if (cslide[i] < 0) {
       ge_p1p1_to_p3(&u, &t);
       ge_sub(&t, &u, &Ci[(-cslide[i])/2]);
+    }
+
+    if (dslide[i] > 0) {
+      ge_p1p1_to_p3(&u, &t);
+      ge_add(&t, &u, &Di[dslide[i]/2]);
+    } else if (dslide[i] < 0) {
+      ge_p1p1_to_p3(&u, &t);
+      ge_sub(&t, &u, &Di[(-dslide[i])/2]);
     }
 
     ge_p1p1_to_p2(r, &t);

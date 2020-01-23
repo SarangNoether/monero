@@ -161,18 +161,20 @@ namespace rct {
         END_SERIALIZE()
     };
 
-    // CLSAG signature
+    // 3-CLSAG signature
     struct clsag {
         keyV s; // scalars
         key c1;
 
         key I; // signing key image
         key D; // commitment key image
+        key E; // commitment key image
 
         BEGIN_SERIALIZE_OBJECT()
             FIELD(s)
             FIELD(c1)
             FIELD(D)
+            FIELD(E)
         END_SERIALIZE()
     };
 

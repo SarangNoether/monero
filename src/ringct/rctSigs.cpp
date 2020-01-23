@@ -260,12 +260,13 @@ namespace rct {
         return rv;
     }
 
-    // Generate a CLSAG signature
+    // Generate a 3-CLSAG signature for use in hidden timelock operations
     // See paper by Goodell et al. (https://eprint.iacr.org/2019/654)
-    clsag CLSAG_Gen(const key &message, const keyV & P, const key & p, const keyV & C, const key & z, const unsigned int l, const multisig_kLRki *kLRki) {
+    clsag CLSAG_Gen(const key &message, const keyV & P, const key & p, const keyV & C, const key & z, const keyV & T, const key & w, const unsigned int l, const multisig_kLRki *kLRki) {
         clsag sig;
         size_t n = P.size(); // ring size
-        CHECK_AND_ASSERT_THROW_MES(n == C.size(), "Signing and commitment key vector sizes must match!");
+        CHECK_AND_ASSERT_THROW_MES(n == C.size(), "Signing and C-commitment key vector sizes must match!");
+        CHECK_AND_ASSERT_THROW_MES(n == T.size(), "Signing and T-commitment key vector sizes must match!");
         CHECK_AND_ASSERT_THROW_MES(l < n, "Signing index out of range!");
 
         // Key images
@@ -276,6 +277,9 @@ namespace rct {
 
         key D;
         scalarmultKey(D,H,z);
+
+        key E;
+        scalarmultKey(E,H,w);
 
         // Multisig
         if (kLRki)
@@ -289,11 +293,14 @@ namespace rct {
 
         geDsmp I_precomp;
         geDsmp D_precomp;
+        geDsmp E_precomp;
         precomp(I_precomp.k,sig.I);
         precomp(D_precomp.k,D);
+        precomp(E_precomp.k,E);
 
-        // Offset key image
+        // Offset key images
         scalarmultKey(sig.D,D,INV_EIGHT);
+        scalarmultKey(sig.E,E,INV_EIGHT);
 
         // Initial values
         key a = skGen();
@@ -303,48 +310,65 @@ namespace rct {
         scalarmultKey(aH,H,a);
 
         // Aggregation hashes
-        keyV mu_P_to_hash(2*n+3); // 0, I, D, P, C
-        keyV mu_C_to_hash(2*n+3); // 1, I, D, P, C
+        keyV mu_P_to_hash(3*n+4); // 0, I, D, E, P, C, T
+        keyV mu_C_to_hash(3*n+4); // 1, I, D, E, P, C, T
+        keyV mu_T_to_hash(3*n+4); // 2, I, D, E, P, C, T
         sc_0(mu_P_to_hash[0].bytes);
         mu_P_to_hash[1] = sig.I;
         mu_P_to_hash[2] = sig.D;
+        mu_P_to_hash[3] = sig.E;
         sc_0(mu_C_to_hash[0].bytes);
         mu_C_to_hash[0].bytes[0] = 1;
         mu_C_to_hash[1] = sig.I;
         mu_C_to_hash[2] = sig.D;
-        for (size_t i = 3; i < n+3; ++i) {
-            mu_P_to_hash[i] = P[i-3];
-            mu_C_to_hash[i] = P[i-3];
+        mu_C_to_hash[3] = sig.E;
+        sc_0(mu_T_to_hash[0].bytes);
+        mu_T_to_hash[0].bytes[0] = 2;
+        mu_T_to_hash[1] = sig.I;
+        mu_T_to_hash[2] = sig.D;
+        mu_T_to_hash[3] = sig.E;
+        for (size_t i = 4; i < n+4; ++i) {
+            mu_P_to_hash[i] = P[i-4];
+            mu_C_to_hash[i] = P[i-4];
+            mu_T_to_hash[i] = P[i-4];
         }
-        for (size_t i = n+3; i < 2*n+3; ++i) {
-            mu_P_to_hash[i] = C[i-n-3];
-            mu_C_to_hash[i] = C[i-n-3];
+        for (size_t i = n+4; i < 2*n+4; ++i) {
+            mu_P_to_hash[i] = C[i-n-4];
+            mu_C_to_hash[i] = C[i-n-4];
+            mu_T_to_hash[i] = C[i-n-4];
         }
-        key mu_P, mu_C;
+        for (size_t i = 2*n+4; i < 3*n+4; ++i) {
+            mu_P_to_hash[i] = T[i-2*n-4];
+            mu_C_to_hash[i] = T[i-2*n-4];
+            mu_T_to_hash[i] = T[i-2*n-4];
+        }
+        key mu_P, mu_C, mu_T;
         mu_P = hash_to_scalar(mu_P_to_hash);
         mu_C = hash_to_scalar(mu_C_to_hash);
+        mu_T = hash_to_scalar(mu_T_to_hash);
 
         // Initial commitment
-        keyV c_to_hash(2*n+3); // P, C, message, aG, aH
+        keyV c_to_hash(3*n+3); // P, C, T, message, aG, aH
         key c;
         for (size_t i = 0; i < n; ++i)
         {
-            c_to_hash[2*i] = P[i];
-            c_to_hash[2*i+1] = C[i];
+            c_to_hash[3*i] = P[i];
+            c_to_hash[3*i+1] = C[i];
+            c_to_hash[3*i+2] = T[i];
         }
-        c_to_hash[2*n] = message;
+        c_to_hash[3*n] = message;
 
         // Multisig data is present
         if (kLRki)
         {
             a = kLRki->k;
-            c_to_hash[2*n+1] = kLRki->L;
-            c_to_hash[2*n+2] = kLRki->R;
+            c_to_hash[3*n+1] = kLRki->L;
+            c_to_hash[3*n+2] = kLRki->R;
         }
         else
         {
-            c_to_hash[2*n+1] = aG;
-            c_to_hash[2*n+2] = aH;
+            c_to_hash[3*n+1] = aG;
+            c_to_hash[3*n+2] = aH;
         }
         c = hash_to_scalar(c_to_hash);
         
@@ -360,8 +384,10 @@ namespace rct {
         key R;
         key c_p; // = c[i]*mu_P
         key c_c; // = c[i]*mu_C
+        key c_t; // = c[i]*mu_T
         geDsmp P_precomp;
         geDsmp C_precomp;
+        geDsmp T_precomp;
         geDsmp H_precomp;
         key Hi;
         ge_p3 Hi_p3;
@@ -371,18 +397,20 @@ namespace rct {
             sc_0(c_new.bytes);
             sc_mul(c_p.bytes,mu_P.bytes,c.bytes);
             sc_mul(c_c.bytes,mu_C.bytes,c.bytes);
+            sc_mul(c_t.bytes,mu_T.bytes,c.bytes);
 
             // Precompute points
             precomp(P_precomp.k,P[i]);
             precomp(C_precomp.k,C[i]);
+            precomp(T_precomp.k,T[i]);
             hash_to_p3(Hi_p3,P[i]);
             ge_p3_tobytes(Hi.bytes,&Hi_p3);
             precomp(H_precomp.k,Hi);
-            addKeys_aGbBcC(L,sig.s[i],c_p,P_precomp.k,c_c,C_precomp.k);
-            addKeys_aAbBcC(R,sig.s[i],H_precomp.k,c_p,I_precomp.k,c_c,D_precomp.k);
+            addKeys_aGbBcCdD(L,sig.s[i],c_p,P_precomp.k,c_c,C_precomp.k,c_t,T_precomp.k);
+            addKeys_aAbBcCdD(R,sig.s[i],H_precomp.k,c_p,I_precomp.k,c_c,D_precomp.k,c_t,E_precomp.k);
 
-            c_to_hash[2*n+1] = L;
-            c_to_hash[2*n+2] = R;
+            c_to_hash[3*n+1] = L;
+            c_to_hash[3*n+2] = R;
             c_new = hash_to_scalar(c_to_hash);
             copy(c,c_new);
             
@@ -396,17 +424,20 @@ namespace rct {
         sc_mul(s0_p_mu_P.bytes,mu_P.bytes,p.bytes);
         key s0_add_z_mu_C;
         sc_muladd(s0_add_z_mu_C.bytes,mu_C.bytes,z.bytes,s0_p_mu_P.bytes);
-        sc_mulsub(sig.s[l].bytes,c.bytes,s0_add_z_mu_C.bytes,a.bytes);
+        key s0_add_w_mu_T;
+        sc_muladd(s0_add_w_mu_T.bytes,mu_T.bytes,w.bytes,s0_add_z_mu_C.bytes);
+        sc_mulsub(sig.s[l].bytes,c.bytes,s0_add_w_mu_T.bytes,a.bytes);
 
         return sig;
     }
 
-    // Verify a CLSAG signature
+    // Verify a 3-CLSAG signature
     // See paper by Goodell et al. (https://eprint.iacr.org/2019/654)
-    bool CLSAG_Ver(const key &message, const keyV & P, const keyV & C, const clsag & sig)
+    bool CLSAG_Ver(const key &message, const keyV & P, const keyV & C, const keyV & T, const clsag & sig)
     {
         size_t n = P.size(); // ring size
-        CHECK_AND_ASSERT_MES(n == C.size(), false, "Signing and commitment key vector sizes must match!");
+        CHECK_AND_ASSERT_MES(n == C.size(), false, "Signing and C-commitment key vector sizes must match!");
+        CHECK_AND_ASSERT_MES(n == T.size(), false, "Signing and T-commitment key vector sizes must match!");
         CHECK_AND_ASSERT_MES(n == sig.s.size(), false, "Signature scalar vector is the wrong size!");
         for (size_t i = 0; i < n; ++i)
             CHECK_AND_ASSERT_MES(sc_check(sig.s[i].bytes) == 0, false, "Bad signature scalar!");
@@ -415,46 +446,69 @@ namespace rct {
 
         key c = copy(sig.c1);
         key D_8 = scalarmult8(sig.D);
-        CHECK_AND_ASSERT_MES(!(D_8 == rct::identity()), false, "Bad auxiliary key image!");
+        key E_8 = scalarmult8(sig.E);
+        CHECK_AND_ASSERT_MES(!(D_8 == rct::identity()), false, "Bad D-auxiliary key image!");
+        CHECK_AND_ASSERT_MES(!(E_8 == rct::identity()), false, "Bad E-auxiliary key image!");
         geDsmp I_precomp;
         geDsmp D_precomp;
+        geDsmp E_precomp;
         precomp(I_precomp.k,sig.I);
         precomp(D_precomp.k,D_8);
+        precomp(E_precomp.k,E_8);
 
         // Aggregation hashes
-        keyV mu_P_to_hash(2*n+3); // 0, I, D, P, C
-        keyV mu_C_to_hash(2*n+3); // 1, I, D, P, C
+        keyV mu_P_to_hash(3*n+4); // 0, I, D, E, P, C, T
+        keyV mu_C_to_hash(3*n+4); // 1, I, D, E, P, C, T
+        keyV mu_T_to_hash(3*n+4); // 2, I, D, E, P, C, T
         sc_0(mu_P_to_hash[0].bytes);
         mu_P_to_hash[1] = sig.I;
         mu_P_to_hash[2] = sig.D;
+        mu_P_to_hash[3] = sig.E;
         sc_0(mu_C_to_hash[0].bytes);
         mu_C_to_hash[0].bytes[0] = 1;
         mu_C_to_hash[1] = sig.I;
         mu_C_to_hash[2] = sig.D;
-        for (size_t i = 3; i < n+3; ++i) {
-            mu_P_to_hash[i] = P[i-3];
-            mu_C_to_hash[i] = P[i-3];
+        mu_C_to_hash[3] = sig.E;
+        sc_0(mu_T_to_hash[0].bytes);
+        mu_T_to_hash[0].bytes[0] = 2;
+        mu_T_to_hash[1] = sig.I;
+        mu_T_to_hash[2] = sig.D;
+        mu_T_to_hash[3] = sig.E;
+        for (size_t i = 4; i < n+4; ++i) {
+            mu_P_to_hash[i] = P[i-4];
+            mu_C_to_hash[i] = P[i-4];
+            mu_T_to_hash[i] = P[i-4];
         }
-        for (size_t i = n+3; i < 2*n+3; ++i) {
-            mu_P_to_hash[i] = C[i-n-3];
-            mu_C_to_hash[i] = C[i-n-3];
+        for (size_t i = n+4; i < 2*n+4; ++i) {
+            mu_P_to_hash[i] = C[i-n-4];
+            mu_C_to_hash[i] = C[i-n-4];
+            mu_T_to_hash[i] = C[i-n-4];
         }
-        key mu_P, mu_C;
+        for (size_t i = 2*n+4; i < 3*n+4; ++i) {
+            mu_P_to_hash[i] = T[i-2*n-4];
+            mu_C_to_hash[i] = T[i-2*n-4];
+            mu_T_to_hash[i] = T[i-2*n-4];
+        }
+        key mu_P, mu_C, mu_T;
         mu_P = hash_to_scalar(mu_P_to_hash);
         mu_C = hash_to_scalar(mu_C_to_hash);
+        mu_T = hash_to_scalar(mu_T_to_hash);
 
-        keyV c_to_hash(2*n+3); // P, C, message, L, R
+        keyV c_to_hash(3*n+3); // P, C, T, message, L, R
         for (size_t i = 0; i < n; ++i)
         {
-            c_to_hash[2*i] = P[i];
-            c_to_hash[2*i+1] = C[i];
+            c_to_hash[3*i] = P[i];
+            c_to_hash[3*i+1] = C[i];
+            c_to_hash[3*i+2] = T[i];
         }
-        c_to_hash[2*n] = message;
+        c_to_hash[3*n] = message;
         key c_p; // = c[i]*mu_P
         key c_c; // = c[i]*mu_C
+        key c_t; // = c[i]*mu_T
         key c_new, L, R, H;
         geDsmp P_precomp;
         geDsmp C_precomp;
+        geDsmp T_precomp;
         geDsmp H_precomp;
         size_t i = 0;
 
@@ -462,10 +516,12 @@ namespace rct {
             sc_0(c_new.bytes);
             sc_mul(c_p.bytes,mu_P.bytes,c.bytes);
             sc_mul(c_c.bytes,mu_C.bytes,c.bytes);
+            sc_mul(c_t.bytes,mu_T.bytes,c.bytes);
 
             // Precompute points
             precomp(P_precomp.k,P[i]);
             precomp(C_precomp.k,C[i]);
+            precomp(T_precomp.k,T[i]);
 
             // Compute R directly
             ge_p3 hash8_p3;
@@ -473,15 +529,15 @@ namespace rct {
             geDsmp hash_precomp;
             ge_dsm_precomp(hash_precomp.k, &hash8_p3);
             ge_p2 R_p2;
-            ge_triple_scalarmult_precomp_vartime(&R_p2, sig.s[i].bytes, hash_precomp.k, c_p.bytes, I_precomp.k, c_c.bytes, D_precomp.k);
+            ge_quad_scalarmult_precomp_vartime(&R_p2, sig.s[i].bytes, hash_precomp.k, c_p.bytes, I_precomp.k, c_c.bytes, D_precomp.k, c_t.bytes, E_precomp.k);
             key R;
             ge_tobytes(R.bytes, &R_p2);
 
             // Compute L
-            addKeys_aGbBcC(L,sig.s[i],c_p,P_precomp.k,c_c,C_precomp.k);
+            addKeys_aGbBcCdD(L,sig.s[i],c_p,P_precomp.k,c_c,C_precomp.k,c_t,T_precomp.k);
 
-            c_to_hash[2*n+1] = L;
-            c_to_hash[2*n+2] = R;
+            c_to_hash[3*n+1] = L;
+            c_to_hash[3*n+2] = R;
             c_new = hash_to_scalar(c_to_hash);
             CHECK_AND_ASSERT_MES(!(c_new == rct::zero()), false, "Bad signature hash");
             copy(c,c_new);
