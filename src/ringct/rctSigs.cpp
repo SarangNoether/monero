@@ -35,6 +35,7 @@
 #include "rctSigs.h"
 #include "bulletproofs.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
+#include "cryptonote_config.h"
 
 using namespace crypto;
 using namespace std;
@@ -296,55 +297,58 @@ namespace rct {
         scalarmultKey(sig.D,D,INV_EIGHT);
 
         // Initial values
-        key a = skGen();
+        key a;
         key aG;
         key aH;
         skpkGen(a,aG);
         scalarmultKey(aH,H,a);
 
         // Aggregation hashes
-        keyV mu_P_to_hash(2*n+3); // 0, I, D, P, C
-        keyV mu_C_to_hash(2*n+3); // 1, I, D, P, C
+        keyV mu_P_to_hash(2*n+3); // domain, I, D, P, C
+        keyV mu_C_to_hash(2*n+3); // domain, I, D, P, C
         sc_0(mu_P_to_hash[0].bytes);
-        mu_P_to_hash[1] = sig.I;
-        mu_P_to_hash[2] = sig.D;
+        memcpy(mu_P_to_hash[0].bytes,config::HASH_KEY_CLSAG_AGG_0,sizeof(config::HASH_KEY_CLSAG_AGG_0)-1);
         sc_0(mu_C_to_hash[0].bytes);
-        mu_C_to_hash[0].bytes[0] = 1;
-        mu_C_to_hash[1] = sig.I;
-        mu_C_to_hash[2] = sig.D;
-        for (size_t i = 3; i < n+3; ++i) {
-            mu_P_to_hash[i] = P[i-3];
-            mu_C_to_hash[i] = P[i-3];
+        memcpy(mu_C_to_hash[0].bytes,config::HASH_KEY_CLSAG_AGG_1,sizeof(config::HASH_KEY_CLSAG_AGG_1)-1);
+        for (size_t i = 1; i < n+1; ++i) {
+            mu_P_to_hash[i] = P[i-1];
+            mu_C_to_hash[i] = P[i-1];
         }
-        for (size_t i = n+3; i < 2*n+3; ++i) {
-            mu_P_to_hash[i] = C[i-n-3];
-            mu_C_to_hash[i] = C[i-n-3];
+        for (size_t i = n+1; i < 2*n+1; ++i) {
+            mu_P_to_hash[i] = C[i-n-1];
+            mu_C_to_hash[i] = C[i-n-1];
         }
+        mu_P_to_hash[2*n+1] = sig.I;
+        mu_P_to_hash[2*n+2] = sig.D;
+        mu_C_to_hash[2*n+1] = sig.I;
+        mu_C_to_hash[2*n+2] = sig.D;
         key mu_P, mu_C;
         mu_P = hash_to_scalar(mu_P_to_hash);
         mu_C = hash_to_scalar(mu_C_to_hash);
 
         // Initial commitment
-        keyV c_to_hash(2*n+3); // P, C, message, aG, aH
+        keyV c_to_hash(2*n+4); // domain, P, C, message, aG, aH
         key c;
-        for (size_t i = 0; i < n; ++i)
+        sc_0(c_to_hash[0].bytes);
+        memcpy(c_to_hash[0].bytes,config::HASH_KEY_CLSAG_ROUND,sizeof(config::HASH_KEY_CLSAG_ROUND)-1);
+        for (size_t i = 1; i < n+1; ++i)
         {
-            c_to_hash[2*i] = P[i];
-            c_to_hash[2*i+1] = C[i];
+            c_to_hash[i] = P[i-1];
+            c_to_hash[i+n] = C[i-1];
         }
-        c_to_hash[2*n] = message;
+        c_to_hash[2*n+1] = message;
 
         // Multisig data is present
         if (kLRki)
         {
             a = kLRki->k;
-            c_to_hash[2*n+1] = kLRki->L;
-            c_to_hash[2*n+2] = kLRki->R;
+            c_to_hash[2*n+2] = kLRki->L;
+            c_to_hash[2*n+3] = kLRki->R;
         }
         else
         {
-            c_to_hash[2*n+1] = aG;
-            c_to_hash[2*n+2] = aH;
+            c_to_hash[2*n+2] = aG;
+            c_to_hash[2*n+3] = aH;
         }
         c = hash_to_scalar(c_to_hash);
         
@@ -363,7 +367,6 @@ namespace rct {
         geDsmp P_precomp;
         geDsmp C_precomp;
         geDsmp H_precomp;
-        key Hi;
         ge_p3 Hi_p3;
 
         while (i != l) {
@@ -375,14 +378,17 @@ namespace rct {
             // Precompute points
             precomp(P_precomp.k,P[i]);
             precomp(C_precomp.k,C[i]);
-            hash_to_p3(Hi_p3,P[i]);
-            ge_p3_tobytes(Hi.bytes,&Hi_p3);
-            precomp(H_precomp.k,Hi);
+
+            // Compute L
             addKeys_aGbBcC(L,sig.s[i],c_p,P_precomp.k,c_c,C_precomp.k);
+
+            // Compute R
+            hash_to_p3(Hi_p3,P[i]);
+            ge_dsm_precomp(H_precomp.k, &Hi_p3);
             addKeys_aAbBcC(R,sig.s[i],H_precomp.k,c_p,I_precomp.k,c_c,D_precomp.k);
 
-            c_to_hash[2*n+1] = L;
-            c_to_hash[2*n+2] = R;
+            c_to_hash[2*n+2] = L;
+            c_to_hash[2*n+3] = R;
             c_new = hash_to_scalar(c_to_hash);
             copy(c,c_new);
             
@@ -422,41 +428,48 @@ namespace rct {
         precomp(D_precomp.k,D_8);
 
         // Aggregation hashes
-        keyV mu_P_to_hash(2*n+3); // 0, I, D, P, C
-        keyV mu_C_to_hash(2*n+3); // 1, I, D, P, C
+        keyV mu_P_to_hash(2*n+3); // domain, I, D, P, C
+        keyV mu_C_to_hash(2*n+3); // domain, I, D, P, C
         sc_0(mu_P_to_hash[0].bytes);
-        mu_P_to_hash[1] = sig.I;
-        mu_P_to_hash[2] = sig.D;
+        memcpy(mu_P_to_hash[0].bytes,config::HASH_KEY_CLSAG_AGG_0,sizeof(config::HASH_KEY_CLSAG_AGG_0)-1);
         sc_0(mu_C_to_hash[0].bytes);
-        mu_C_to_hash[0].bytes[0] = 1;
-        mu_C_to_hash[1] = sig.I;
-        mu_C_to_hash[2] = sig.D;
-        for (size_t i = 3; i < n+3; ++i) {
-            mu_P_to_hash[i] = P[i-3];
-            mu_C_to_hash[i] = P[i-3];
+        memcpy(mu_C_to_hash[0].bytes,config::HASH_KEY_CLSAG_AGG_1,sizeof(config::HASH_KEY_CLSAG_AGG_1)-1);
+        for (size_t i = 1; i < n+1; ++i) {
+            mu_P_to_hash[i] = P[i-1];
+            mu_C_to_hash[i] = P[i-1];
         }
-        for (size_t i = n+3; i < 2*n+3; ++i) {
-            mu_P_to_hash[i] = C[i-n-3];
-            mu_C_to_hash[i] = C[i-n-3];
+        for (size_t i = n+1; i < 2*n+1; ++i) {
+            mu_P_to_hash[i] = C[i-n-1];
+            mu_C_to_hash[i] = C[i-n-1];
         }
+        mu_P_to_hash[2*n+1] = sig.I;
+        mu_P_to_hash[2*n+2] = sig.D;
+        mu_C_to_hash[2*n+1] = sig.I;
+        mu_C_to_hash[2*n+2] = sig.D;
         key mu_P, mu_C;
         mu_P = hash_to_scalar(mu_P_to_hash);
         mu_C = hash_to_scalar(mu_C_to_hash);
 
-        keyV c_to_hash(2*n+3); // P, C, message, L, R
-        for (size_t i = 0; i < n; ++i)
+        keyV c_to_hash(2*n+4); // domain, P, C, message, L, R
+        sc_0(c_to_hash[0].bytes);
+        memcpy(c_to_hash[0].bytes,config::HASH_KEY_CLSAG_ROUND,sizeof(config::HASH_KEY_CLSAG_ROUND)-1);
+        for (size_t i = 1; i < n+1; ++i)
         {
-            c_to_hash[2*i] = P[i];
-            c_to_hash[2*i+1] = C[i];
+            c_to_hash[i] = P[i-1];
+            c_to_hash[i+n] = C[i-1];
         }
-        c_to_hash[2*n] = message;
+        c_to_hash[2*n+1] = message;
         key c_p; // = c[i]*mu_P
         key c_c; // = c[i]*mu_C
-        key c_new, L, R, H;
+        key c_new;
+        key L;
+        key R;
         geDsmp P_precomp;
         geDsmp C_precomp;
         geDsmp H_precomp;
         size_t i = 0;
+        ge_p3 hash8_p3;
+        geDsmp hash_precomp;
 
         while (i < n) {
             sc_0(c_new.bytes);
@@ -467,21 +480,16 @@ namespace rct {
             precomp(P_precomp.k,P[i]);
             precomp(C_precomp.k,C[i]);
 
-            // Compute R directly
-            ge_p3 hash8_p3;
-            hash_to_p3(hash8_p3,P[i]);
-            geDsmp hash_precomp;
-            ge_dsm_precomp(hash_precomp.k, &hash8_p3);
-            ge_p2 R_p2;
-            ge_triple_scalarmult_precomp_vartime(&R_p2, sig.s[i].bytes, hash_precomp.k, c_p.bytes, I_precomp.k, c_c.bytes, D_precomp.k);
-            key R;
-            ge_tobytes(R.bytes, &R_p2);
-
             // Compute L
             addKeys_aGbBcC(L,sig.s[i],c_p,P_precomp.k,c_c,C_precomp.k);
 
-            c_to_hash[2*n+1] = L;
-            c_to_hash[2*n+2] = R;
+            // Compute R
+            hash_to_p3(hash8_p3,P[i]);
+            ge_dsm_precomp(hash_precomp.k, &hash8_p3);
+            addKeys_aAbBcC(R,sig.s[i],hash_precomp.k,c_p,I_precomp.k,c_c,D_precomp.k);
+
+            c_to_hash[2*n+2] = L;
+            c_to_hash[2*n+3] = R;
             c_new = hash_to_scalar(c_to_hash);
             CHECK_AND_ASSERT_MES(!(c_new == rct::zero()), false, "Bad signature hash");
             copy(c,c_new);
