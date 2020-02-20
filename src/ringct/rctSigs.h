@@ -78,7 +78,7 @@ namespace rct {
     bool MLSAG_Ver(const key &message, const keyM &pk, const mgSig &sig, size_t dsRows);
 
     clsag CLSAG_Gen(const key &message, const keyV & P, const key & p, const keyV & C, const key & z, const unsigned int l, const multisig_kLRki *kLRki);
-    bool CLSAG_Ver(const key &message, const keyV & P, const keyV & C, const clsag & sig);
+    bool CLSAG_Ver(const key &message, const keyV & P, const ge_p3V & P_p3, const keyV & C, const ge_p3V & C_p3, const clsag & sig);
     //mgSig MLSAG_Gen_Old(const keyM & pk, const keyV & xx, const int index);
 
     //proveRange and verRange
@@ -101,6 +101,7 @@ namespace rct {
     //   verifies the above sig is created corretly
     mgSig proveRctMG(const ctkeyM & pubs, const ctkeyV & inSk, const keyV &outMasks, const ctkeyV & outPk, const multisig_kLRki *kLRki, key *mscout, unsigned int index, const key &txnFee, const key &message, hw::device &hwdev);
     mgSig proveRctMGSimple(const key & message, const ctkeyV & pubs, const ctkey & inSk, const key &a , const key &Cout, const multisig_kLRki *kLRki, key *mscout, unsigned int index, hw::device &hwdev);
+    bool verRctCLSAGSimple(const key & message, const clsag & clsag, const ctkeyV & pubs, const key & C);
     bool verRctMG(const mgSig &mg, const ctkeyM & pubs, const ctkeyV & outPk, const key &txnFee, const key &message);
     bool verRctMGSimple(const key &message, const mgSig &mg, const ctkeyV & pubs, const key & C);
 

@@ -32,12 +32,11 @@
 
 #include "ringct/rctSigs.h"
 #include "cryptonote_basic/cryptonote_basic.h"
-#include "crypto/crypto-ops.h"
 
 #include "single_tx_test_base.h"
 
 template<size_t ring_size, bool ver, size_t index>
-class test_sig_clsag : public single_tx_test_base
+class test_offset_clsag : public single_tx_test_base
 {
 public:
   static const size_t n = ring_size;
@@ -53,31 +52,45 @@ public:
     z = rct::skGen();
     P = rct::skvGen(n);
     C = rct::skvGen(n);
-    P_p3 = rct::ge_p3V(n);
-    C_p3 = rct::ge_p3V(n);
+    rct::identity(C_aux);
     for (size_t i = 0 ; i < n; i++)
     {
         P[i] = rct::scalarmultBase(P[i]);
-        ge_frombytes_vartime((ge_p3 *) &P_p3[i],P[i].bytes);
         C[i] = rct::scalarmultBase(C[i]);
-        ge_frombytes_vartime((ge_p3 *) &C_p3[i],C[i].bytes);
     }
     P[l] = rct::scalarmultBase(p);
-    ge_frombytes_vartime((ge_p3 *) &P_p3[l],P[l].bytes);
     C[l] = rct::scalarmultBase(z);
-    ge_frombytes_vartime((ge_p3 *) &C_p3[l],C[l].bytes);
     
-    sig = CLSAG_Gen(rct::identity(),P,p,C,z,l,NULL);
+    pubs.reserve(n);
+    for (size_t i = 0; i < n; i++)
+    {
+        rct::ctkey tmp;
+        tmp.dest = P[i];
+        tmp.mask = C[i];
+        pubs.push_back(tmp);
+    }
+    pubs[l].dest = P[l];
+    pubs[l].mask = C[l];
+
+    rct::ctkey sec; // secret key (p,z)
+    sec.dest = p;
+    sec.mask = z;
+
+    rct::key zero;
+    sc_0(zero.bytes);
+    sig = CLSAG_Gen(zero,P,p,C,z,l,NULL);
 
     return true;
   }
 
   bool test()
   {
+    rct::key zero;
+    sc_0(zero.bytes);
     if (ver)
-      return CLSAG_Ver(rct::identity(),P,P_p3,C,C_p3,sig);
+      return verRctCLSAGSimple(zero,sig,pubs,C_aux);
     else
-      CLSAG_Gen(rct::identity(),P,p,C,z,l,NULL);
+      sig = CLSAG_Gen(zero,P,p,C,z,l,NULL);
     return true;
   }
 
@@ -86,7 +99,7 @@ private:
   rct::key z;
   rct::keyV P;
   rct::keyV C;
-  rct::ge_p3V P_p3;
-  rct::ge_p3V C_p3;
+  rct::key C_aux;
+  rct::ctkeyV pubs;
   rct::clsag sig;
 };

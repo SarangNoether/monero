@@ -409,7 +409,18 @@ namespace rct {
 
     // Verify a CLSAG signature
     // See paper by Goodell et al. (https://eprint.iacr.org/2019/654)
-    bool CLSAG_Ver(const key &message, const keyV & P, const keyV & C, const clsag & sig)
+    //
+    // INPUTS
+    //   message: message to be signed
+    //   P: signing key vector
+    //   P_p3: ge_p3 version of P (NOTE: not checked against P!)
+    //   C: commitment key vector
+    //   C_p3: ge_p3 version of C (NOTE: not checked against C!)
+    //   sig: CLSAG signature
+    // RETURNS
+    //   True if signature verifies
+    //   False otherwise
+    bool CLSAG_Ver(const key &message, const keyV & P, const ge_p3V & P_p3, const keyV & C, const ge_p3V & C_p3, const clsag & sig)
     {
         size_t n = P.size(); // ring size
         CHECK_AND_ASSERT_MES(n == C.size(), false, "Signing and commitment key vector sizes must match!");
@@ -477,8 +488,8 @@ namespace rct {
             sc_mul(c_c.bytes,mu_C.bytes,c.bytes);
 
             // Precompute points
-            precomp(P_precomp.k,P[i]);
-            precomp(C_precomp.k,C[i]);
+            ge_dsm_precomp(P_precomp.k,(ge_p3 *) &P_p3[i]);
+            ge_dsm_precomp(C_precomp.k,(ge_p3 *) &C_p3[i]);
 
             // Compute L
             addKeys_aGbBcC(L,sig.s[i],c_p,P_precomp.k,c_c,C_precomp.k);
@@ -498,6 +509,38 @@ namespace rct {
         }
         sc_sub(c_new.bytes,c.bytes,sig.c1.bytes);
         return sc_isnonzero(c_new.bytes) == 0;
+    }
+
+    bool verRctCLSAGSimple(const key &message, const clsag &clsag, const ctkeyV & pubs, const key & C) {
+        try
+        {
+            PERF_TIMER(verRctCLSAGSimple);
+            const size_t n = pubs.size();
+            CHECK_AND_ASSERT_MES(n >= 1, false, "Empty pubs");
+            ge_p3V P_p3(n), C_p3(n);
+            keyV P_bytes(n), C_bytes(n);
+
+            ge_p3 Cp3;
+            CHECK_AND_ASSERT_MES_L1(ge_frombytes_vartime(&Cp3, C.bytes) == 0, false, "point conv failed");
+            ge_cached Ccached;
+            ge_p3_to_cached(&Ccached, &Cp3);
+            ge_p1p1 p1;
+            ge_p3 p3;
+
+            for (size_t i = 0; i < n; i++) {
+                    // Commitment offset and p3 encodings
+                    CHECK_AND_ASSERT_MES_L1(ge_frombytes_vartime((ge_p3 *) &P_p3[i], pubs[i].dest.bytes) == 0, false, "point conv failed");
+                    CHECK_AND_ASSERT_MES_L1(ge_frombytes_vartime(&p3, pubs[i].mask.bytes) == 0, false, "point conv failed");
+                    ge_sub(&p1, &p3, &Ccached);
+                    ge_p1p1_to_p3((ge_p3 *) &C_p3[i], &p1);
+
+                    // Byte encodings
+                    P_bytes[i] = pubs[i].dest;
+                    ge_p3_tobytes(C_bytes[i].bytes, (ge_p3 *) &C_p3[i]);
+            }
+            return CLSAG_Ver(message, P_bytes, P_p3, C_bytes, C_p3, clsag);
+        }
+        catch (...) { return false; }
     }
 
     // MLSAG signatures
