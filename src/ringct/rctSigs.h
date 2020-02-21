@@ -78,7 +78,6 @@ namespace rct {
     bool MLSAG_Ver(const key &message, const keyM &pk, const mgSig &sig, size_t dsRows);
 
     clsag CLSAG_Gen(const key &message, const keyV & P, const key & p, const keyV & C, const key & z, const unsigned int l, const multisig_kLRki *kLRki);
-    bool CLSAG_Ver(const key &message, const keyV & P, const ge_p3V & P_p3, const keyV & C, const ge_p3V & C_p3, const clsag & sig);
     //mgSig MLSAG_Gen_Old(const keyM & pk, const keyV & xx, const int index);
 
     //proveRange and verRange

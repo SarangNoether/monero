@@ -87,7 +87,6 @@ namespace rct {
     };
     typedef std::vector<key> keyV; //vector of keys
     typedef std::vector<keyV> keyM; //matrix of keys (indexed by column first)
-    typedef std::vector<ge_p3> ge_p3V; // vector of ge_p3
 
     //containers For CT operations
     //if it's  representing a private ctkey then "dest" contains the secret key of the address
