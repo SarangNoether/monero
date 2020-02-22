@@ -78,7 +78,7 @@ public:
 
     rct::key zero;
     sc_0(zero.bytes);
-    sig = CLSAG_Gen(zero,P,p,C,z,l,NULL);
+    sig = CLSAG_Gen(zero,P,p,C,z,C_aux,l,NULL);
 
     return true;
   }
@@ -90,7 +90,7 @@ public:
     if (ver)
       return verRctCLSAGSimple(zero,sig,pubs,C_aux);
     else
-      sig = CLSAG_Gen(zero,P,p,C,z,l,NULL);
+      sig = CLSAG_Gen(zero,P,p,C,z,C_aux,l,NULL);
     return true;
   }
 

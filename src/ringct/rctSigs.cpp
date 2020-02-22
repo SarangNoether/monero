@@ -263,7 +263,7 @@ namespace rct {
 
     // Generate a CLSAG signature
     // See paper by Goodell et al. (https://eprint.iacr.org/2019/654)
-    clsag CLSAG_Gen(const key &message, const keyV & P, const key & p, const keyV & C, const key & z, const unsigned int l, const multisig_kLRki *kLRki) {
+    clsag CLSAG_Gen(const key &message, const keyV & P, const key & p, const keyV & C, const key & z, const key & C_offset, const unsigned int l, const multisig_kLRki *kLRki) {
         clsag sig;
         size_t n = P.size(); // ring size
         CHECK_AND_ASSERT_THROW_MES(n == C.size(), "Signing and commitment key vector sizes must match!");
@@ -304,8 +304,8 @@ namespace rct {
         scalarmultKey(aH,H,a);
 
         // Aggregation hashes
-        keyV mu_P_to_hash(2*n+3); // domain, I, D, P, C
-        keyV mu_C_to_hash(2*n+3); // domain, I, D, P, C
+        keyV mu_P_to_hash(2*n+4); // domain, I, D, P, C, C_offset
+        keyV mu_C_to_hash(2*n+4); // domain, I, D, P, C, C_offset
         sc_0(mu_P_to_hash[0].bytes);
         memcpy(mu_P_to_hash[0].bytes,config::HASH_KEY_CLSAG_AGG_0,sizeof(config::HASH_KEY_CLSAG_AGG_0)-1);
         sc_0(mu_C_to_hash[0].bytes);
@@ -320,14 +320,16 @@ namespace rct {
         }
         mu_P_to_hash[2*n+1] = sig.I;
         mu_P_to_hash[2*n+2] = sig.D;
+        mu_P_to_hash[2*n+3] = C_offset;
         mu_C_to_hash[2*n+1] = sig.I;
         mu_C_to_hash[2*n+2] = sig.D;
+        mu_C_to_hash[2*n+3] = C_offset;
         key mu_P, mu_C;
         mu_P = hash_to_scalar(mu_P_to_hash);
         mu_C = hash_to_scalar(mu_C_to_hash);
 
         // Initial commitment
-        keyV c_to_hash(2*n+4); // domain, P, C, message, aG, aH
+        keyV c_to_hash(2*n+5); // domain, P, C, C_offset, message, aG, aH
         key c;
         sc_0(c_to_hash[0].bytes);
         memcpy(c_to_hash[0].bytes,config::HASH_KEY_CLSAG_ROUND,sizeof(config::HASH_KEY_CLSAG_ROUND)-1);
@@ -336,19 +338,20 @@ namespace rct {
             c_to_hash[i] = P[i-1];
             c_to_hash[i+n] = C[i-1];
         }
-        c_to_hash[2*n+1] = message;
+        c_to_hash[2*n+1] = C_offset;
+        c_to_hash[2*n+2] = message;
 
         // Multisig data is present
         if (kLRki)
         {
             a = kLRki->k;
-            c_to_hash[2*n+2] = kLRki->L;
-            c_to_hash[2*n+3] = kLRki->R;
+            c_to_hash[2*n+3] = kLRki->L;
+            c_to_hash[2*n+4] = kLRki->R;
         }
         else
         {
-            c_to_hash[2*n+2] = aG;
-            c_to_hash[2*n+3] = aH;
+            c_to_hash[2*n+3] = aG;
+            c_to_hash[2*n+4] = aH;
         }
         c = hash_to_scalar(c_to_hash);
         
@@ -387,8 +390,8 @@ namespace rct {
             ge_dsm_precomp(H_precomp.k, &Hi_p3);
             addKeys_aAbBcC(R,sig.s[i],H_precomp.k,c_p,I_precomp.k,c_c,D_precomp.k);
 
-            c_to_hash[2*n+2] = L;
-            c_to_hash[2*n+3] = R;
+            c_to_hash[2*n+3] = L;
+            c_to_hash[2*n+4] = R;
             c_new = hash_to_scalar(c_to_hash);
             copy(c,c_new);
             
@@ -437,8 +440,8 @@ namespace rct {
             precomp(D_precomp.k,D_8);
 
             // Aggregation hashes
-            keyV mu_P_to_hash(2*n+3); // domain, I, D, P, C
-            keyV mu_C_to_hash(2*n+3); // domain, I, D, P, C
+            keyV mu_P_to_hash(2*n+4); // domain, I, D, P, C, C_offset
+            keyV mu_C_to_hash(2*n+4); // domain, I, D, P, C, C_offset
             sc_0(mu_P_to_hash[0].bytes);
             memcpy(mu_P_to_hash[0].bytes,config::HASH_KEY_CLSAG_AGG_0,sizeof(config::HASH_KEY_CLSAG_AGG_0)-1);
             sc_0(mu_C_to_hash[0].bytes);
@@ -453,14 +456,16 @@ namespace rct {
             }
             mu_P_to_hash[2*n+1] = sig.I;
             mu_P_to_hash[2*n+2] = sig.D;
+            mu_P_to_hash[2*n+3] = C_offset;
             mu_C_to_hash[2*n+1] = sig.I;
             mu_C_to_hash[2*n+2] = sig.D;
+            mu_C_to_hash[2*n+3] = C_offset;
             key mu_P, mu_C;
             mu_P = hash_to_scalar(mu_P_to_hash);
             mu_C = hash_to_scalar(mu_C_to_hash);
 
             // Set up round hash
-            keyV c_to_hash(2*n+4); // domain, P, C, message, L, R
+            keyV c_to_hash(2*n+5); // domain, P, C, C_offset, message, L, R
             sc_0(c_to_hash[0].bytes);
             memcpy(c_to_hash[0].bytes,config::HASH_KEY_CLSAG_ROUND,sizeof(config::HASH_KEY_CLSAG_ROUND)-1);
             for (size_t i = 1; i < n+1; ++i)
@@ -468,7 +473,8 @@ namespace rct {
                 c_to_hash[i] = pubs[i-1].dest;
                 c_to_hash[i+n] = pubs[i-1].mask;
             }
-            c_to_hash[2*n+1] = message;
+            c_to_hash[2*n+1] = C_offset;
+            c_to_hash[2*n+2] = message;
             key c_p; // = c[i]*mu_P
             key c_c; // = c[i]*mu_C
             key c_new;
@@ -504,8 +510,8 @@ namespace rct {
                 ge_dsm_precomp(hash_precomp.k, &hash8_p3);
                 addKeys_aAbBcC(R,sig.s[i],hash_precomp.k,c_p,I_precomp.k,c_c,D_precomp.k);
 
-                c_to_hash[2*n+2] = L;
-                c_to_hash[2*n+3] = R;
+                c_to_hash[2*n+3] = L;
+                c_to_hash[2*n+4] = R;
                 c_new = hash_to_scalar(c_to_hash);
                 CHECK_AND_ASSERT_MES(!(c_new == rct::zero()), false, "Bad signature hash");
                 copy(c,c_new);
