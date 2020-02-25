@@ -60,6 +60,7 @@
 #include "bulletproof.h"
 #include "crypto_ops.h"
 #include "multiexp.h"
+#include "offset_mlsag.h"
 
 namespace po = boost::program_options;
 
@@ -138,6 +139,8 @@ int main(int argc, char** argv)
   TEST_PERFORMANCE3(filter, p, test_construct_tx, 100, 1, true);
   TEST_PERFORMANCE3(filter, p, test_construct_tx, 100, 2, true);
   TEST_PERFORMANCE3(filter, p, test_construct_tx, 100, 10, true);
+
+  TEST_PERFORMANCE3(filter, p, test_offset_mlsag, 11, true, 0);
 
   TEST_PERFORMANCE5(filter, p, test_construct_tx, 2, 1, true, rct::RangeProofPaddedBulletproof, 2);
   TEST_PERFORMANCE5(filter, p, test_construct_tx, 2, 2, true, rct::RangeProofPaddedBulletproof, 2);

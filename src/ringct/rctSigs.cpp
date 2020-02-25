@@ -600,33 +600,87 @@ namespace rct {
     //Ver: 
     //This does a simplified version, assuming only post Rct
     //inputs
-    bool verRctMGSimple(const key &message, const mgSig &mg, const ctkeyV & pubs, const key & C) {
+    bool verRctMGSimple(const key &message, const mgSig &sig, const ctkeyV & pubs, const key & C_offset) {
         try
         {
             PERF_TIMER(verRctMGSimple);
-            //setup vars
-            size_t rows = 1;
-            size_t cols = pubs.size();
-            CHECK_AND_ASSERT_MES(cols >= 1, false, "Empty pubs");
-            keyV tmp(rows + 1);
-            size_t i;
-            keyM M(cols, tmp);
-            ge_p3 Cp3;
-            CHECK_AND_ASSERT_MES_L1(ge_frombytes_vartime(&Cp3, C.bytes) == 0, false, "point conv failed");
-            ge_cached Ccached;
-            ge_p3_to_cached(&Ccached, &Cp3);
-            ge_p1p1 p1;
-            //create the matrix to mg sig
-            for (i = 0; i < cols; i++) {
-                    M[i][0] = pubs[i].dest;
-                    ge_p3 p3;
-                    CHECK_AND_ASSERT_MES_L1(ge_frombytes_vartime(&p3, pubs[i].mask.bytes) == 0, false, "point conv failed");
-                    ge_sub(&p1, &p3, &Ccached);
-                    ge_p1p1_to_p3(&p3, &p1);
-                    ge_p3_tobytes(M[i][1].bytes, &p3);
+            const size_t n = pubs.size();
+
+            // Check data
+            CHECK_AND_ASSERT_MES(n >= 1, false, "Empty pubs");
+            CHECK_AND_ASSERT_MES(n == sig.ss.size(), false, "Signature scalar vector is the wrong size!");
+            for (size_t i = 0; i < n; i++)
+            {
+                CHECK_AND_ASSERT_MES(2 == sig.ss[i].size(), false, "Signature scalar vector is the wrong size!");
+                CHECK_AND_ASSERT_MES(sc_check(sig.ss[i][0].bytes) == 0, false, "Bad signature scalar!");
+                CHECK_AND_ASSERT_MES(sc_check(sig.ss[i][1].bytes) == 0, false, "Bad signature scalar!");
             }
-            //DP(C);
-            return MLSAG_Ver(message, M, mg, rows);
+            CHECK_AND_ASSERT_MES(sc_check(sig.cc.bytes) == 0, false, "Bad signature commitment!");
+            CHECK_AND_ASSERT_MES(1 == sig.II.size(), false, "Key image vector is the wrong size!");
+            CHECK_AND_ASSERT_MES(!(sig.II[0] == rct::identity()), false, "Bad key image!");
+
+            // Cache commitment offset for efficient subtraction
+            ge_p3 C_offset_p3;
+            CHECK_AND_ASSERT_MES(ge_frombytes_vartime(&C_offset_p3, C_offset.bytes) == 0, false, "point conv failed");
+            ge_cached C_offset_cached;
+            ge_p3_to_cached(&C_offset_cached, &C_offset_p3);
+
+            // Prepare key image
+            key c = copy(sig.cc);
+            geDsmp I_precomp;
+            precomp(I_precomp.k,sig.II[0]);
+
+            // Set up round hash
+            keyV c_to_hash(6); // message, P_i, L_0, R_0, C_i, L_1
+            c_to_hash[0] = message;
+            key c_new;
+            key L_0;
+            key R_0;
+            key L_1;
+            key C;
+            size_t i = 0;
+            ge_p3 hash8_p3;
+            geDsmp hash_precomp;
+            ge_p3 C_p3;
+            ge_p2 temp_p2;
+            ge_p1p1 temp_p1;
+
+            while (i < n) {
+                sc_0(c_new.bytes);
+
+                // Precompute points for L/R
+                CHECK_AND_ASSERT_MES(ge_frombytes_vartime(&C_p3, pubs[i].mask.bytes) == 0, false, "point conv failed");
+                ge_sub(&temp_p1,&C_p3,&C_offset_cached);
+                ge_p1p1_to_p3(&C_p3,&temp_p1);
+                ge_p3_tobytes(C.bytes,&C_p3);
+
+                hash_to_p3(hash8_p3,pubs[i].dest);
+                ge_dsm_precomp(hash_precomp.k,&hash8_p3);
+
+                // L_0
+                addKeys2(L_0, sig.ss[i][0], c, pubs[i].dest);
+
+                // R_0
+                ge_double_scalarmult_precomp_vartime(&temp_p2,sig.ss[i][0].bytes,&hash8_p3,c.bytes,I_precomp.k);
+                ge_tobytes(R_0.bytes,&temp_p2);
+                
+                // L_1
+                ge_double_scalarmult_base_vartime(&temp_p2,c.bytes,&C_p3,sig.ss[i][1].bytes);
+                ge_tobytes(L_1.bytes,&temp_p2);
+
+                c_to_hash[1] = pubs[i].dest;
+                c_to_hash[2] = L_0;
+                c_to_hash[3] = R_0;
+                c_to_hash[4] = C;
+                c_to_hash[5] = L_1;
+                c_new = hash_to_scalar(c_to_hash);
+                CHECK_AND_ASSERT_MES(!(c_new == rct::zero()), false, "Bad signature hash");
+                copy(c,c_new);
+
+                i = i + 1;
+            }
+            sc_sub(c_new.bytes,c.bytes,sig.cc.bytes);
+            return sc_isnonzero(c_new.bytes) == 0;
         }
         catch (...) { return false; }
     }
