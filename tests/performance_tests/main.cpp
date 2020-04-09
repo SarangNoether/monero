@@ -62,6 +62,7 @@
 #include "multiexp.h"
 #include "sig_mlsag.h"
 #include "sig_clsag.h"
+#include "triptych.h"
 
 namespace po = boost::program_options;
 
@@ -240,6 +241,8 @@ int main(int argc, char** argv)
 
   TEST_PERFORMANCE1(filter, p, test_range_proof, true);
   TEST_PERFORMANCE1(filter, p, test_range_proof, false);
+
+  TEST_PERFORMANCE1(filter, p, test_triptych, true);
 
   TEST_PERFORMANCE2(filter, p, test_bulletproof, true, 1); // 1 bulletproof with 1 amount
   TEST_PERFORMANCE2(filter, p, test_bulletproof, false, 1);
