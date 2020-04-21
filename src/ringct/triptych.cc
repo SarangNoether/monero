@@ -70,23 +70,27 @@ namespace rct
         hash_to_scalar(transcript,salt.data(),salt.size());
     }
 
-    // Update transcript: transcript, message, M, P, C_offset, J, K, A, B, C, D
-    static void transcript_update_mu(key &transcript, const key &message, const keyV &M, const keyV &P, const key &C_offset, const key &J, const key &K, const key &A, const key &B, const key &C, const key &D)
+    // Update transcript: transcript, message, M_sign, M_amount, M_lock, C_offset_amount, C_offset_lock, J, K, L, A, B, C, D
+    static void transcript_update_mu(key &transcript, const key &message, const keyV &M_sign, const keyV &M_amount, const keyV &M_lock, const key &C_offset_amount, const key &C_offset_lock, const key &J, const key &K, const key &L, const key &A, const key &B, const key &C, const key &D)
     {
-        CHECK_AND_ASSERT_THROW_MES(M.size() == P.size(), "Transcript challenge inputs have incorrect size!");
+        CHECK_AND_ASSERT_THROW_MES(M_sign.size() == M_amount.size(), "Transcript challenge inputs have incorrect size!");
+        CHECK_AND_ASSERT_THROW_MES(M_sign.size() == M_lock.size(), "Transcript challenge inputs have incorrect size!");
 
         std::string hash;
-        hash.reserve((2*M.size() + 9)*sizeof(key));
+        hash.reserve((3*M_sign.size() + 11)*sizeof(key));
         hash = std::string((const char*) transcript.bytes, sizeof(transcript));
         hash += std::string((const char*) message.bytes, sizeof(message));
-        for (size_t k = 0; k < M.size(); k++)
+        for (size_t k = 0; k < M_sign.size(); k++)
         {
-            hash += std::string((const char*) M[k].bytes, sizeof(M[k]));
-            hash += std::string((const char*) P[k].bytes, sizeof(P[k]));
+            hash += std::string((const char*) M_sign[k].bytes, sizeof(M_sign[k]));
+            hash += std::string((const char*) M_amount[k].bytes, sizeof(M_amount[k]));
+            hash += std::string((const char*) M_lock[k].bytes, sizeof(M_lock[k]));
         }
-        hash += std::string((const char*) C_offset.bytes, sizeof(C_offset));
+        hash += std::string((const char*) C_offset_amount.bytes, sizeof(C_offset_amount));
+        hash += std::string((const char*) C_offset_lock.bytes, sizeof(C_offset_lock));
         hash += std::string((const char*) J.bytes, sizeof(J));
         hash += std::string((const char*) K.bytes, sizeof(K));
+        hash += std::string((const char*) L.bytes, sizeof(L));
         hash += std::string((const char*) A.bytes, sizeof(A));
         hash += std::string((const char*) B.bytes, sizeof(B));
         hash += std::string((const char*) C.bytes, sizeof(C));
@@ -288,7 +292,7 @@ namespace rct
     }
 
     // Generate a Triptych proof
-    TriptychProof triptych_prove(const keyV &M, const keyV &P, const key &C_offset, const size_t l, const key &r, const key &s, const size_t n, const size_t m, const key &message)
+    TriptychProof triptych_prove(const keyV &M_sign, const keyV &M_amount, const keyV &M_lock, const key &C_offset_amount, const key &C_offset_lock, const size_t l, const key &r_sign, const key &r_amount, const key &r_lock, const size_t n, const size_t m, const key &message)
     {
         key temp,temp2;
 
@@ -298,13 +302,17 @@ namespace rct
         const size_t N = pow(n,m);
 
         CHECK_AND_ASSERT_THROW_MES(m*n <= max_mn, "Size parameters are too large!");
-        CHECK_AND_ASSERT_THROW_MES(M.size() == N, "Public key vector is wrong size!");
-        CHECK_AND_ASSERT_THROW_MES(P.size() == N, "Commitment vector is wrong size!");
-        CHECK_AND_ASSERT_THROW_MES(l < M.size(), "Signing index out of bounds!");
-        CHECK_AND_ASSERT_THROW_MES(scalarmultBase(r) == M[l], "Bad signing key!");
+        CHECK_AND_ASSERT_THROW_MES(M_sign.size() == N, "Public key vector is wrong size!");
+        CHECK_AND_ASSERT_THROW_MES(M_amount.size() == N, "Public key vector is wrong size!");
+        CHECK_AND_ASSERT_THROW_MES(M_lock.size() == N, "Public key vector is wrong size!");
+        CHECK_AND_ASSERT_THROW_MES(l < M_sign.size(), "Signing index out of bounds!");
+        CHECK_AND_ASSERT_THROW_MES(scalarmultBase(r_sign) == M_sign[l], "Bad signing key!");
 
-        subKeys(temp,P[l],C_offset);
-        CHECK_AND_ASSERT_THROW_MES(scalarmultBase(s) == temp, "Bad commitment key!");
+        subKeys(temp,M_amount[l],C_offset_amount);
+        CHECK_AND_ASSERT_THROW_MES(scalarmultBase(r_amount) == temp, "Bad commitment key!");
+
+        subKeys(temp,M_lock[l],C_offset_lock);
+        CHECK_AND_ASSERT_THROW_MES(scalarmultBase(r_lock) == temp, "Bad commitment key!");
 
         init_gens();
 
@@ -318,10 +326,12 @@ namespace rct
         transcript_init(tr);
 
         // Compute key images
-        // J = (1/r)*U
-        // K = s*J
-        proof.J = scalarmultKey(U,invert(r));
-        proof.K = scalarmultKey(proof.J,s);
+        // J = (1/r_sign)*U
+        // K = r_amount*J
+        // L = r_lock*J
+        proof.J = scalarmultKey(U,invert(r_sign));
+        proof.K = scalarmultKey(proof.J,r_amount);
+        proof.L = scalarmultKey(proof.J,r_lock);
 
         // Matrix masks
         key rA = skGen();
@@ -445,29 +455,36 @@ namespace rct
 
         // Challenge
         proof.K = scalarmultKey(proof.K,INV_EIGHT);
+        proof.L = scalarmultKey(proof.L,INV_EIGHT);
         proof.A = scalarmultKey(proof.A,INV_EIGHT);
         proof.B = scalarmultKey(proof.B,INV_EIGHT);
         proof.C = scalarmultKey(proof.C,INV_EIGHT);
         proof.D = scalarmultKey(proof.D,INV_EIGHT);
-        transcript_update_mu(tr,message,M,P,C_offset,proof.J,proof.K,proof.A,proof.B,proof.C,proof.D);
+        transcript_update_mu(tr,message,M_sign,M_amount,M_lock,C_offset_amount,C_offset_lock,proof.J,proof.K,proof.L,proof.A,proof.B,proof.C,proof.D);
         const key mu = copy(tr);
+        key mu_sq;
+        sc_mul(mu_sq.bytes,mu.bytes,mu.bytes);
 
         key U_scalars;
         for (size_t j = 0; j < m; j++)
         {
             std::vector<MultiexpData> data_X;
-            data_X.reserve(2*N);
+            data_X.reserve(3*N);
             
             U_scalars = ZERO;
 
             for (size_t k = 0; k < N; k++)
             {
-                // X[j] += p[k][j]*(M[k] + mu*P[k])
+                // X[j] += p[k][j]*(M_sign[k] + mu*(M_amount[k] - C_offset_amount) + mu**2*(M_lock[k] - C_offset_lock))
                 // Y[j] += p[k][j]*U
-                data_X.push_back({p[k][j],M[k]});
+                data_X.push_back({p[k][j],M_sign[k]});
 
                 sc_mul(temp.bytes,mu.bytes,p[k][j].bytes);
-                subKeys(temp2,P[k],C_offset);
+                subKeys(temp2,M_amount[k],C_offset_amount);
+                data_X.push_back({temp,temp2});
+
+                sc_mul(temp.bytes,mu_sq.bytes,p[k][j].bytes);
+                subKeys(temp2,M_lock[k],C_offset_lock);
                 data_X.push_back({temp,temp2});
 
                 sc_add(U_scalars.bytes,U_scalars.bytes,p[k][j].bytes);
@@ -519,14 +536,15 @@ namespace rct
         // Build the z-terms
         // zA = rB*x + rA
         // zC = rC*x + rD
-        // z = (r + mu*s)*x**m - rho[0]*x**0 - ... - rho[m-1]*x**(m-1)
+        // z = (r_sign + mu*r_amount + mu**2*r_lock)*x**m - rho[0]*x**0 - ... - rho[m-1]*x**(m-1)
 
         sc_muladd(proof.zA.bytes,rB.bytes,x.bytes,rA.bytes);
         CHECK_AND_ASSERT_THROW_MES(!(proof.zA == ZERO), "Proof scalar element should not be zero!");
         sc_muladd(proof.zC.bytes,rC.bytes,x.bytes,rD.bytes);
         CHECK_AND_ASSERT_THROW_MES(!(proof.zC == ZERO), "Proof scalar element should not be zero!");
 
-        sc_muladd(proof.z.bytes,mu.bytes,s.bytes,r.bytes);
+        sc_muladd(proof.z.bytes,mu.bytes,r_amount.bytes,r_sign.bytes);
+        sc_muladd(proof.z.bytes,mu_sq.bytes,r_lock.bytes,proof.z.bytes);
         sc_mul(proof.z.bytes,proof.z.bytes,x_pow[m].bytes);
 
         for (size_t j = 0; j < m; j++)
@@ -535,7 +553,7 @@ namespace rct
         }
         CHECK_AND_ASSERT_THROW_MES(!(proof.z == ZERO), "Proof scalar element should not be zero!");
 
-        // Clear secret prover data
+        // Clear secret internal prover data
         memwipe(&rA,sizeof(key));
         memwipe(&rB,sizeof(key));
         memwipe(&rC,sizeof(key));
@@ -550,7 +568,7 @@ namespace rct
     }
 
     // Verify a batch of Triptych proofs with common input keys
-    bool triptych_verify(const keyV &M, const keyV &P, const keyV &C_offsets, std::vector<TriptychProof *> &proofs, const size_t n, const size_t m, const keyV &messages)
+    bool triptych_verify(const keyV &M_sign, const keyV &M_amount, const keyV &M_lock, const keyV &C_offsets_amount, const keyV &C_offsets_lock, std::vector<TriptychProof *> &proofs, const size_t n, const size_t m, const keyV &messages)
     {
         // Global checks
         CHECK_AND_ASSERT_THROW_MES(n > 1, "Must have n > 1!");
@@ -559,12 +577,14 @@ namespace rct
 
         const size_t N = pow(n,m); // anonymity set size
 
-        CHECK_AND_ASSERT_THROW_MES(M.size() == N, "Public key vector is wrong size!");
-        CHECK_AND_ASSERT_THROW_MES(P.size() == N, "Commitment vector is wrong size!");
+        CHECK_AND_ASSERT_THROW_MES(M_sign.size() == N, "Public key vector is wrong size!");
+        CHECK_AND_ASSERT_THROW_MES(M_amount.size() == N, "Public key vector is wrong size!");
+        CHECK_AND_ASSERT_THROW_MES(M_lock.size() == N, "Public key vector is wrong size!");
 
         const size_t N_proofs = proofs.size(); // number of proofs in batch
 
-        CHECK_AND_ASSERT_THROW_MES(C_offsets.size() == N_proofs, "Incorrect number of commitment offsets!");
+        CHECK_AND_ASSERT_THROW_MES(C_offsets_amount.size() == N_proofs, "Incorrect number of commitment offsets!");
+        CHECK_AND_ASSERT_THROW_MES(C_offsets_lock.size() == N_proofs, "Incorrect number of commitment offsets!");
         CHECK_AND_ASSERT_THROW_MES(messages.size() == N_proofs, "Incorrect number of messages!");
 
         // Per-proof checks
@@ -600,14 +620,15 @@ namespace rct
         // Index data:
         // 0            m*n-1       Hi[i]
         // m*n                      H
-        // m*n+1        m*n+N       M[i]
-        // m*n+N+1      m*n+2*N     P[i]
-        // m*n+2*N+1                U
-        // m*n+2*N+2                G
-        // ... then per-proof data
+        // m*n+1        m*n+N       M_sign[i]
+        // m*n+N+1      m*n+2*N     M_amount[i]
+        // m*n+2*N+1    m*n+3*N     M_lock[i]
+        // m*n+3*N+1                U
+        // m*n+3*N+2                G
+        // ... then per-proof data: C_offsets_amount[i], C_offsets_lock[i], X[i], Y[i], J, K, L, A, B, C, D
         std::vector<MultiexpData> data;
-        data.reserve((m*n + 1) + (2*N + 2) + N_proofs*(2*m + 7));
-        data.resize((m*n + 1) + (2*N + 2)); // set up for all common elements
+        data.reserve((m*n + 1) + (3*N + 2) + N_proofs*(2*m + 9));
+        data.resize((m*n + 1) + (3*N + 2)); // set up for all common elements
 
         // Data for {Hi},H
         for (size_t i = 0; i < m*n; i++)
@@ -616,18 +637,17 @@ namespace rct
         }
         data[m*n] = {ZERO,H_p3};
 
-        // Data for {M},{P}
+        // Data for {M_sign},{M_amounts},{M_lock}
         for (size_t k = 0; k < N; k++)
         {
-            data[m*n+1+k] = {ZERO,M[k]};
-            data[m*n+N+1+k] = {ZERO,P[k]};
+            data[m*n+1+k] = {ZERO,M_sign[k]};
+            data[m*n+N+1+k] = {ZERO,M_amount[k]};
+            data[m*n+2*N+1+k] = {ZERO,M_lock[k]};
         }
 
-        // Data for U
-        data[m*n+2*N+1] = {ZERO,U_p3};
-
-        // Data for G
-        data[m*n+2*N+2] = {ZERO,G_p3};
+        // Data for U,G
+        data[m*n+3*N+1] = {ZERO,U_p3};
+        data[m*n+3*N+2] = {ZERO,G_p3};
 
         // Start per-proof data assembly
         for (size_t i_proofs = 0; i_proofs < N_proofs; i_proofs++)
@@ -650,13 +670,16 @@ namespace rct
             // Transcript
             key tr;
             transcript_init(tr);
-            transcript_update_mu(tr,messages[i_proofs],M,P,C_offsets[i_proofs],proof.J,proof.K,proof.A,proof.B,proof.C,proof.D);
+            transcript_update_mu(tr,messages[i_proofs],M_sign,M_amount,M_lock,C_offsets_amount[i_proofs],C_offsets_lock[i_proofs],proof.J,proof.K,proof.L,proof.A,proof.B,proof.C,proof.D);
             const key mu = copy(tr);
+            key mu_sq;
+            sc_mul(mu_sq.bytes,mu.bytes,mu.bytes);
             transcript_update_x(tr,proof.X,proof.Y);
             const key x = copy(tr);
 
             // Recover proof elements
             ge_p3 K_p3;
+            ge_p3 L_p3;
             ge_p3 A_p3;
             ge_p3 B_p3;
             ge_p3 C_p3;
@@ -668,6 +691,7 @@ namespace rct
             Y_p3.reserve(m);
             Y_p3.resize(m);
             scalarmult8(K_p3,proof.K);
+            scalarmult8(L_p3,proof.L);
             scalarmult8(A_p3,proof.A);
             scalarmult8(B_p3,proof.B);
             scalarmult8(C_p3,proof.C);
@@ -743,9 +767,10 @@ namespace rct
             sc_mul(temp.bytes,temp.bytes,x.bytes);
             data.push_back({temp,C_p3});
 
-            // M,P
-            // M[k]: w3*t
-            // P[k]: w3*t*mu
+            // M_sign,M_amount,M_lock
+            // M_sign[k]: w3*t
+            // M_amount[k]: w3*t*mu
+            // M_lock[k]: w3*t*mu**2
             key sum_t = ZERO;
             for (size_t k = 0; k < N; k++)
             {
@@ -766,22 +791,33 @@ namespace rct
                 sc_mul(temp.bytes,temp.bytes,mu.bytes);
                 sc_add(data[m*n+N+1+k].scalar.bytes,data[m*n+N+1+k].scalar.bytes,temp.bytes);
 
+                sc_mul(temp.bytes,temp.bytes,mu.bytes);
+                sc_add(data[m*n+2*N+1+k].scalar.bytes,data[m*n+2*N+1+k].scalar.bytes,temp.bytes);
+
                 sc_add(sum_t.bytes,sum_t.bytes,t.bytes);
             }
 
-            // C_offsets[i_proofs]: -w3*mu*sum_t
+            // C_offsets_amount[i_proofs]: -w3*mu*sum_t
+            // C_offsets_lock[i_proofs]: -w3*mu**2*sum_t
             sc_mul(temp.bytes,MINUS_ONE.bytes,w3.bytes);
             sc_mul(temp.bytes,temp.bytes,mu.bytes);
             sc_mul(temp.bytes,temp.bytes,sum_t.bytes);
-            data.push_back({temp,C_offsets[i_proofs]});
+            data.push_back({temp,C_offsets_amount[i_proofs]});
+
+            sc_mul(temp.bytes,temp.bytes,mu.bytes);
+            data.push_back({temp,C_offsets_lock[i_proofs]});
 
             // U: w4*sum_t
             sc_mul(temp.bytes,w4.bytes,sum_t.bytes);
-            sc_add(data[m*n+2*N+1].scalar.bytes,data[m*n+2*N+1].scalar.bytes,temp.bytes);
+            sc_add(data[m*n+3*N+1].scalar.bytes,data[m*n+3*N+1].scalar.bytes,temp.bytes);
 
             // K: w4*sum_t*mu
             sc_mul(temp.bytes,temp.bytes,mu.bytes);
             data.push_back({temp,K_p3});
+
+            // L: w4*sum_t*mu**2
+            sc_mul(temp.bytes,temp.bytes,mu.bytes);
+            data.push_back({temp,L_p3});
 
             for (size_t j = 0; j < m; j++)
             {
@@ -797,7 +833,7 @@ namespace rct
             // G: -w3*z
             sc_mul(temp.bytes,MINUS_ONE.bytes,proof.z.bytes);
             sc_mul(temp.bytes,temp.bytes,w3.bytes);
-            sc_add(data[m*n+2*N+2].scalar.bytes,data[m*n+2*N+2].scalar.bytes,temp.bytes);
+            sc_add(data[m*n+3*N+2].scalar.bytes,data[m*n+3*N+2].scalar.bytes,temp.bytes);
 
             // J: -w4*z
             sc_mul(temp.bytes,MINUS_ONE.bytes,proof.z.bytes);
@@ -806,7 +842,7 @@ namespace rct
         }
 
         // Final check
-        CHECK_AND_ASSERT_THROW_MES(data.size() == (m*n + 1) + (2*N + 2) + N_proofs*(2*m + 7), "Final proof data is incorrect size!");
+        CHECK_AND_ASSERT_THROW_MES(data.size() == (m*n + 1) + (3*N + 2) + N_proofs*(2*m + 9), "Final proof data is incorrect size!");
         if (!(pippenger(data,cache,m*n,get_pippenger_c(data.size())) == IDENTITY))
         {
             MERROR("Triptych verification failed!");

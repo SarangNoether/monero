@@ -150,8 +150,7 @@ namespace rct {
     // Triptych proof structure
     struct TriptychProof
     {
-        key J;
-        key K;
+        key J,K,L;
         key A,B,C,D;
         keyV X,Y;
         keyM f;
@@ -159,6 +158,7 @@ namespace rct {
 
         BEGIN_SERIALIZE_OBJECT()
             FIELD(K)
+            FIELD(L)
             FIELD(A)
             FIELD(B)
             FIELD(C)

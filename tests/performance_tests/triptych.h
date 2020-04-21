@@ -52,36 +52,46 @@ class test_triptych
             proofs.resize(0);
 
             // Build key vectors
-            M = keyV(N);
-            P = keyV(N);
-            r = keyV(N_proofs);
-            s = keyV(N_proofs);
+            M_sign = keyV(N);
+            M_amount = keyV(N);
+            M_lock = keyV(N);
+            r_sign = keyV(N_proofs);
+            r_amount = keyV(N_proofs);
+            r_lock = keyV(N_proofs);
             messages = keyV(N_proofs);
-            C_offsets = keyV(N_proofs);
+            C_offsets_amount = keyV(N_proofs);
+            C_offsets_lock = keyV(N_proofs);
 
             // Random keys
             key temp;
             for (size_t k = 0; k < N; k++)
             {
-                skpkGen(temp,M[k]);
-                skpkGen(temp,P[k]);
+                skpkGen(temp,M_sign[k]);
+                skpkGen(temp,M_amount[k]);
+                skpkGen(temp,M_lock[k]);
             }
 
             // Signing keys, messages, and commitment offsets
             key s1,s2;
             for (size_t i = 0; i < N_proofs; i++)
             {
-                skpkGen(r[i],M[i]);
-                skpkGen(s1,P[i]);
                 messages[i] = skGen();
-                skpkGen(s2,C_offsets[i]);
-                sc_sub(s[i].bytes,s1.bytes,s2.bytes);
+
+                skpkGen(r_sign[i],M_sign[i]);
+
+                skpkGen(s1,M_amount[i]);
+                skpkGen(s2,C_offsets_amount[i]);
+                sc_sub(r_amount[i].bytes,s1.bytes,s2.bytes);
+
+                skpkGen(s1,M_lock[i]);
+                skpkGen(s2,C_offsets_lock[i]);
+                sc_sub(r_lock[i].bytes,s1.bytes,s2.bytes);
             }
 
             // Build proofs
             for (size_t i = 0; i < N_proofs; i++)
             {
-                p.push_back(triptych_prove(M,P,C_offsets[i],i,r[i],s[i],n,m,messages[i]));
+                p.push_back(triptych_prove(M_sign,M_amount,M_lock,C_offsets_amount[i],C_offsets_lock[i],i,r_sign[i],r_amount[i],r_lock[i],n,m,messages[i]));
             }
             for (TriptychProof &proof: p)
             {
@@ -93,15 +103,18 @@ class test_triptych
 
         bool test()
         {
-            return triptych_verify(M,P,C_offsets,proofs,n,m,messages);
+            return triptych_verify(M_sign,M_amount,M_lock,C_offsets_amount,C_offsets_lock,proofs,n,m,messages);
         }
 
     private:
-        keyV M;
-        keyV P;
-        keyV r;
-        keyV s;
-        keyV C_offsets;
+        keyV M_sign;
+        keyV M_amount;
+        keyV M_lock;
+        keyV r_sign;
+        keyV r_amount;
+        keyV r_lock;
+        keyV C_offsets_amount;
+        keyV C_offsets_lock;
         keyV messages;
         std::vector<TriptychProof> p;
         std::vector<TriptychProof *> proofs;
