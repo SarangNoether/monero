@@ -62,6 +62,7 @@
 #include "multiexp.h"
 #include "sig_mlsag.h"
 #include "sig_clsag.h"
+#include "sig_clsag3.h"
 
 namespace po = boost::program_options;
 
@@ -227,6 +228,12 @@ int main(int argc, char** argv)
   TEST_PERFORMANCE2(filter, p, test_sig_clsag, 64, 1);
   TEST_PERFORMANCE2(filter, p, test_sig_clsag, 128, 1);
   TEST_PERFORMANCE2(filter, p, test_sig_clsag, 256, 1);
+  TEST_PERFORMANCE2(filter, p, test_sig_clsag3, 8, 1); // CLSAG3 verification
+  TEST_PERFORMANCE2(filter, p, test_sig_clsag3, 16, 1);
+  TEST_PERFORMANCE2(filter, p, test_sig_clsag3, 32, 1);
+  TEST_PERFORMANCE2(filter, p, test_sig_clsag3, 64, 1);
+  TEST_PERFORMANCE2(filter, p, test_sig_clsag3, 128, 1);
+  TEST_PERFORMANCE2(filter, p, test_sig_clsag3, 256, 1);
 
   TEST_PERFORMANCE2(filter, p, test_ringct_mlsag, 11, false);
   TEST_PERFORMANCE2(filter, p, test_ringct_mlsag, 11, true);

@@ -77,10 +77,14 @@ namespace rct {
     mgSig MLSAG_Gen(const key &message, const keyM & pk, const keyV & xx, const multisig_kLRki *kLRki, key *mscout, const unsigned int index, size_t dsRows, hw::device &hwdev);
     bool MLSAG_Ver(const key &message, const keyM &pk, const mgSig &sig, size_t dsRows);
 
-    clsag CLSAG_Gen(const key &message, const keyV & P, const key & p, const keyV & C, const keyV & C_nonzero, const key & C_offset, const key & z, const unsigned int l, const multisig_kLRki *kLRki, key *mscout, key *mspout, hw::device &hwdev);
-    clsag CLSAG_Gen(const key &message, const keyV & P, const key & p, const keyV & C, const keyV & C_nonzero, const key & C_offset, const key & z, const unsigned int l);
-    clsag proveRctCLSAGSimple(const key &, const ctkeyV &, const ctkey &, const key &, const key &, const multisig_kLRki *, key *, key *, unsigned int, hw::device &);
-    bool verRctCLSAGSimple(const key &, const clsag &, const ctkeyV &, const key &);
+    clsag CLSAG_Gen(const key &message, const keyV & P, const key & p, const keyV & C, const key & z, const keyV & C_nonzero, const key & C_offset, const unsigned int l, const multisig_kLRki *kLRki, key *mscout, key *mspout, hw::device &hwdev);
+    clsag CLSAG_Gen(const key &message, const keyV & P, const key & p, const keyV & C, const key & z, const keyV & C_nonzero, const key & C_offset, const unsigned int l);
+    clsag proveRctCLSAGSimple(const key &message, const ctkeyV &pubs, const ctkey &inSk, const key &a, const key &Cout, const multisig_kLRki *kLRki, key *mscout, key *mspout, unsigned int index, hw::device &hwdev);
+    bool verRctCLSAGSimple(const key &message, const clsag &sig, const ctkeyV &pubs, const key &C_offset);
+
+    clsag3 CLSAG3_Gen(const key &message, const keyV & P, const key & p, const keyV & C, const key &z, const keyV & C_nonzero, const key & C_offset, const keyV & T, const key & w, const keyV & T_nonzero, const key & T_offset, const unsigned int l);
+    clsag3 proveRctCLSAG3Simple(const key &message, const ctkey3V &pubs, const ctkey3 &inSk, const key &a, const key &b, const key &Cout, const key &Tout, unsigned int index);
+    bool verRctCLSAG3Simple(const key &message, const clsag3 &sig, const ctkey3V &pubs, const key &C_offset, const key &T_offset);
 
     //proveRange and verRange
     //proveRange gives C, and mask such that \sumCi = C

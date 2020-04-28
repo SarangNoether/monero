@@ -34,6 +34,7 @@
 #include "common/util.h"
 #include "rctSigs.h"
 #include "bulletproofs.h"
+#include "multiexp.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "cryptonote_config.h"
 
@@ -323,6 +324,165 @@ namespace rct {
 
     clsag CLSAG_Gen(const key &message, const keyV & P, const key & p, const keyV & C, const key & z, const keyV & C_nonzero, const key & C_offset, const unsigned int l) {
         return CLSAG_Gen(message, P, p, C, z, C_nonzero, C_offset, l, NULL, NULL, NULL, hw::get_device("default"));
+    }
+
+    clsag3 CLSAG3_Gen(const key &message, const keyV & P, const key & p, const keyV & C, const key & z, const keyV & C_nonzero, const key & C_offset, const keyV & T, const key & w, const keyV & T_nonzero, const key & T_offset, const unsigned int l) {
+        clsag3 sig;
+        size_t n = P.size(); // ring size
+        CHECK_AND_ASSERT_THROW_MES(n == C.size(), "Signing and commitment key vector sizes must match!");
+        CHECK_AND_ASSERT_THROW_MES(n == C_nonzero.size(), "Signing and commitment key vector sizes must match!");
+        CHECK_AND_ASSERT_THROW_MES(n == T.size(), "Signing and commitment key vector sizes must match!");
+        CHECK_AND_ASSERT_THROW_MES(n == T_nonzero.size(), "Signing and commitment key vector sizes must match!");
+        CHECK_AND_ASSERT_THROW_MES(l < n, "Signing index out of range!");
+        
+        // Key images
+        ge_p3 H_p3;
+        hash_to_p3(H_p3,P[l]);
+        key H;
+        ge_p3_tobytes(H.bytes,&H_p3);
+
+        key D;
+        key E;
+
+        scalarmultKey(sig.I,H,p);
+        scalarmultKey(D,H,z);
+        scalarmultKey(E,H,w);
+
+        // Initial values
+        key a = skGen();
+        key aG;
+        key aH;
+
+        scalarmultBase(aG,a);
+        scalarmultKey(aH,H,a);
+
+        ge_p3 G_p3;
+        ge_frombytes_vartime(&G_p3, G.bytes);
+        ge_p3 I_p3;
+        ge_frombytes_vartime(&I_p3, sig.I.bytes);
+        ge_p3 D_p3;
+        ge_frombytes_vartime(&D_p3, D.bytes);
+        ge_p3 E_p3;
+        ge_frombytes_vartime(&E_p3, E.bytes);
+
+        // Offset key image
+        scalarmultKey(sig.D,D,INV_EIGHT);
+        scalarmultKey(sig.E,E,INV_EIGHT);
+
+        // Aggregation hash
+        keyV mu_to_hash(3*n+6); // domain, P, C, T, I, D, E, C_offset, T_offset
+        sc_0(mu_to_hash[0].bytes);
+        memcpy(mu_to_hash[0].bytes,config::HASH_KEY_CLSAG3_AGG,sizeof(config::HASH_KEY_CLSAG3_AGG)-1);
+        for (size_t i = 1; i < n+1; ++i) {
+            mu_to_hash[i] = P[i-1];
+        }
+        for (size_t i = n+1; i < 2*n+1; ++i) {
+            mu_to_hash[i] = C_nonzero[i-n-1];
+        }
+        for (size_t i = 2*n+1; i < 3*n+1; ++i) {
+            mu_to_hash[i] = T_nonzero[i-2*n-1];
+        }
+        mu_to_hash[3*n+1] = sig.I;
+        mu_to_hash[3*n+2] = sig.D;
+        mu_to_hash[3*n+3] = sig.E;
+        mu_to_hash[3*n+4] = C_offset;
+        mu_to_hash[3*n+5] = T_offset;
+
+        key mu, mu2, mu3;
+        mu = hash_to_scalar(mu_to_hash);
+        sc_mul(mu2.bytes,mu.bytes,mu.bytes);
+        sc_mul(mu3.bytes,mu2.bytes,mu.bytes);
+
+        // Initial commitment
+        keyV c_to_hash(3*n+6); // domain, P, C, T, C_offset, T_offset, message, aG, aH
+        key c;
+        sc_0(c_to_hash[0].bytes);
+        memcpy(c_to_hash[0].bytes,config::HASH_KEY_CLSAG3_ROUND,sizeof(config::HASH_KEY_CLSAG3_ROUND)-1);
+        for (size_t i = 1; i < n+1; ++i)
+        {
+            c_to_hash[i] = P[i-1];
+            c_to_hash[i+n] = C_nonzero[i-1];
+            c_to_hash[i+2*n] = T_nonzero[i-1];
+        }
+        c_to_hash[3*n+1] = C_offset;
+        c_to_hash[3*n+2] = T_offset;
+        c_to_hash[3*n+3] = message;
+        c_to_hash[3*n+4] = aG;
+        c_to_hash[3*n+5] = aH;
+
+        c = hash_to_scalar(c_to_hash);
+        
+        size_t i;
+        i = (l + 1) % n;
+        if (i == 0)
+            copy(sig.c1, c);
+
+        // Decoy indices
+        sig.s = keyV(n);
+        key c_new;
+        key L;
+        key R;
+        key c_p; // = c[i]*mu
+        key c_z; // = c[i]*mu**2
+        key c_w; // = c[i]*mu**3
+        ge_p3 Hi_p3;
+
+        while (i != l) {
+            sig.s[i] = skGen();
+            sc_0(c_new.bytes);
+            sc_mul(c_p.bytes,c.bytes,mu.bytes);
+            sc_mul(c_z.bytes,c.bytes,mu2.bytes);
+            sc_mul(c_w.bytes,c.bytes,mu3.bytes);
+
+            // Compute L
+            std::vector<MultiexpData> L_data;
+            L_data.reserve(4);
+            L_data.resize(0);
+            L_data.push_back({sig.s[i],G_p3});
+            L_data.push_back({c_p,P[i]});
+            L_data.push_back({c_z,C[i]});
+            L_data.push_back({c_w,T[i]});
+            L = straus(L_data);
+
+            // Compute R
+            hash_to_p3(Hi_p3,P[i]);
+            std::vector<MultiexpData> R_data;
+            R_data.reserve(4);
+            R_data.resize(0);
+            R_data.push_back({sig.s[i],Hi_p3});
+            R_data.push_back({c_p,I_p3});
+            R_data.push_back({c_z,D_p3});
+            R_data.push_back({c_w,E_p3});
+            R = straus(R_data);
+
+            c_to_hash[3*n+4] = L;
+            c_to_hash[3*n+5] = R;
+            c_new = hash_to_scalar(c_to_hash);
+            copy(c,c_new);
+            
+            i = (i + 1) % n;
+            if (i == 0)
+                copy(sig.c1,c);
+        }
+
+        // Compute final scalar
+        key temp;
+        sc_0(sig.s[l].bytes);
+
+        sc_mul(temp.bytes,mu.bytes,p.bytes);
+        sc_add(sig.s[l].bytes,sig.s[l].bytes,temp.bytes);
+
+        sc_mul(temp.bytes,mu2.bytes,z.bytes);
+        sc_add(sig.s[l].bytes,sig.s[l].bytes,temp.bytes);
+        
+        sc_mul(temp.bytes,mu3.bytes,w.bytes);
+        sc_add(sig.s[l].bytes,sig.s[l].bytes,temp.bytes);
+
+        sc_mulsub(sig.s[l].bytes,sig.s[l].bytes,c.bytes,a.bytes);
+
+        memwipe(&a, sizeof(key));
+
+        return sig;
     }
 
     // MLSAG signatures
@@ -745,6 +905,41 @@ namespace rct {
         return result;
     }
 
+    clsag3 proveRctCLSAG3Simple(const key &message, const ctkey3V &pubs, const ctkey3 &inSk, const key &a, const key &b, const key &Cout, const key &Tout, unsigned int index) {
+        //setup vars
+        size_t rows = 1;
+        size_t cols = pubs.size();
+        CHECK_AND_ASSERT_THROW_MES(cols >= 1, "Empty pubs");
+        keyV tmp(rows + 2);
+        keyV sk(rows + 2);
+        size_t i;
+        keyM M(cols, tmp);
+
+        keyV P, C, C_nonzero, T, T_nonzero;
+        P.reserve(pubs.size());
+        C.reserve(pubs.size());
+        T.reserve(pubs.size());
+        C_nonzero.reserve(pubs.size());
+        T_nonzero.reserve(pubs.size());
+        for (const ctkey3 &k: pubs)
+        {
+            P.push_back(k.dest);
+            C_nonzero.push_back(k.mask);
+            T_nonzero.push_back(k.lock);
+            rct::key tmp;
+            subKeys(tmp, k.mask, Cout);
+            C.push_back(tmp);
+            subKeys(tmp, k.lock, Tout);
+            T.push_back(tmp);
+        }
+
+        sk[0] = copy(inSk.dest);
+        sc_sub(sk[1].bytes, inSk.mask.bytes, a.bytes);
+        sc_sub(sk[2].bytes, inSk.lock.bytes, b.bytes);
+        clsag3 result = CLSAG3_Gen(message, P, sk[0], C, sk[1], C_nonzero, Cout, T, sk[2], T_nonzero, Tout, index);
+        memwipe(sk.data(), sk.size() * sizeof(key));
+        return result;
+    }
 
     //Ring-ct MG sigs
     //Prove: 
@@ -938,6 +1133,151 @@ namespace rct {
         catch (...) { return false; }
     }
 
+    bool verRctCLSAG3Simple(const key &message, const clsag3 &sig, const ctkey3V & pubs, const key & C_offset, const key & T_offset) {
+        try
+        {
+            PERF_TIMER(verRctCLSAG3Simple);
+            const size_t n = pubs.size();
+
+            // Check data
+            CHECK_AND_ASSERT_MES(n >= 1, false, "Empty pubs");
+            CHECK_AND_ASSERT_MES(n == sig.s.size(), false, "Signature scalar vector is the wrong size!");
+            for (size_t i = 0; i < n; ++i)
+                CHECK_AND_ASSERT_MES(sc_check(sig.s[i].bytes) == 0, false, "Bad signature scalar!");
+            CHECK_AND_ASSERT_MES(sc_check(sig.c1.bytes) == 0, false, "Bad signature commitment!");
+            CHECK_AND_ASSERT_MES(!(sig.I == rct::identity()), false, "Bad key image!");
+
+            // Store commitment offset for efficient subtraction later
+            ge_p3 C_offset_p3;
+            CHECK_AND_ASSERT_MES(ge_frombytes_vartime(&C_offset_p3, C_offset.bytes) == 0, false, "point conv failed");
+            ge_cached C_offset_cached;
+            ge_p3_to_cached(&C_offset_cached, &C_offset_p3);
+
+            ge_p3 T_offset_p3;
+            CHECK_AND_ASSERT_MES(ge_frombytes_vartime(&T_offset_p3, T_offset.bytes) == 0, false, "point conv failed");
+            ge_cached T_offset_cached;
+            ge_p3_to_cached(&T_offset_cached, &T_offset_p3);
+
+            key c = copy(sig.c1);
+
+            ge_p3 G_p3;
+            ge_frombytes_vartime(&G_p3, G.bytes);
+
+            // Prepare key images
+            ge_p3 I_p3;
+            CHECK_AND_ASSERT_MES(ge_frombytes_vartime(&I_p3, sig.I.bytes) == 0, false, "point conv failed");
+
+            key D_8;
+            ge_p3 D_8_p3;
+            scalarmult8(D_8_p3,sig.D);
+            ge_p3_tobytes(D_8.bytes,&D_8_p3);
+            CHECK_AND_ASSERT_MES(!(D_8 == rct::identity()), false, "Bad auxiliary key image!");
+
+            key E_8;
+            ge_p3 E_8_p3;
+            scalarmult8(E_8_p3,sig.E);
+            ge_p3_tobytes(E_8.bytes,&E_8_p3);
+            CHECK_AND_ASSERT_MES(!(E_8 == rct::identity()), false, "Bad auxiliary key image!");
+
+            // Aggregation hash
+            keyV mu_to_hash(3*n+6); // domain, P, C, T, I, D, E, C_offset, T_offset
+            sc_0(mu_to_hash[0].bytes);
+            memcpy(mu_to_hash[0].bytes,config::HASH_KEY_CLSAG3_AGG,sizeof(config::HASH_KEY_CLSAG3_AGG)-1);
+            for (size_t i = 1; i < n+1; ++i) {
+                mu_to_hash[i] = pubs[i-1].dest;
+            }
+            for (size_t i = n+1; i < 2*n+1; ++i) {
+                mu_to_hash[i] = pubs[i-n-1].mask;
+            }
+            for (size_t i = 2*n+1; i < 3*n+1; ++i) {
+                mu_to_hash[i] = pubs[i-2*n-1].lock;
+            }
+            mu_to_hash[3*n+1] = sig.I;
+            mu_to_hash[3*n+2] = sig.D;
+            mu_to_hash[3*n+3] = sig.E;
+            mu_to_hash[3*n+4] = C_offset;
+            mu_to_hash[3*n+5] = T_offset;
+            
+            key mu, mu2, mu3;
+            mu = hash_to_scalar(mu_to_hash);
+            sc_mul(mu2.bytes,mu.bytes,mu.bytes);
+            sc_mul(mu3.bytes,mu2.bytes,mu.bytes);
+
+            // Set up round hash
+            keyV c_to_hash(3*n+6); // domain, P, C, T, C_offset, T_offset, message, L, R
+            sc_0(c_to_hash[0].bytes);
+            memcpy(c_to_hash[0].bytes,config::HASH_KEY_CLSAG3_ROUND,sizeof(config::HASH_KEY_CLSAG3_ROUND)-1);
+            for (size_t i = 1; i < n+1; ++i)
+            {
+                c_to_hash[i] = pubs[i-1].dest;
+                c_to_hash[i+n] = pubs[i-1].mask;
+                c_to_hash[i+2*n] = pubs[i-1].lock;
+            }
+            c_to_hash[3*n+1] = C_offset;
+            c_to_hash[3*n+2] = T_offset;
+            c_to_hash[3*n+3] = message;
+            key c_p; // = c[i]*mu
+            key c_z; // = c[i]*mu**2
+            key c_w; // = c[i]*mu**3
+            key c_new;
+            key L;
+            key R;
+            size_t i = 0;
+
+            while (i < n) {
+                sc_0(c_new.bytes);
+                sc_mul(c_p.bytes,c.bytes,mu.bytes);
+                sc_mul(c_z.bytes,c.bytes,mu2.bytes);
+                sc_mul(c_w.bytes,c.bytes,mu3.bytes);
+
+                // Offset commitments
+                ge_p1p1 temp_p1;
+
+                ge_p3 C_p3;
+                CHECK_AND_ASSERT_MES(ge_frombytes_vartime(&C_p3, pubs[i].mask.bytes) == 0, false, "point conv failed");
+                ge_sub(&temp_p1,&C_p3,&C_offset_cached);
+                ge_p1p1_to_p3(&C_p3,&temp_p1);
+
+                ge_p3 T_p3;
+                CHECK_AND_ASSERT_MES(ge_frombytes_vartime(&T_p3, pubs[i].lock.bytes) == 0, false, "point conv failed");
+                ge_sub(&temp_p1,&T_p3,&T_offset_cached);
+                ge_p1p1_to_p3(&T_p3,&temp_p1);
+                
+                // Compute L
+                std::vector<MultiexpData> L_data;
+                L_data.reserve(4);
+                L_data.resize(0);
+                L_data.push_back({sig.s[i],G_p3});
+                L_data.push_back({c_p,pubs[i].dest});
+                L_data.push_back({c_z,C_p3});
+                L_data.push_back({c_w,T_p3});
+                L = straus(L_data);
+
+                // Compute R
+                std::vector<MultiexpData> R_data;
+                R_data.reserve(4);
+                R_data.resize(0);
+                ge_p3 hash_p3;
+                hash_to_p3(hash_p3,pubs[i].dest);
+                R_data.push_back({sig.s[i],hash_p3});
+                R_data.push_back({c_p,I_p3});
+                R_data.push_back({c_z,D_8_p3});
+                R_data.push_back({c_w,E_8_p3});
+                R = straus(R_data);
+
+                c_to_hash[3*n+4] = L;
+                c_to_hash[3*n+5] = R;
+                c_new = hash_to_scalar(c_to_hash);
+                CHECK_AND_ASSERT_MES(!(c_new == rct::zero()), false, "Bad signature hash");
+                copy(c,c_new);
+
+                i = i + 1;
+            }
+            sc_sub(c_new.bytes,c.bytes,sig.c1.bytes);
+            return sc_isnonzero(c_new.bytes) == 0;
+        }
+        catch (...) { return false; }
+    }
 
     //These functions get keys from blockchain
     //replace these when connecting blockchain

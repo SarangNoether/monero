@@ -100,6 +100,14 @@ namespace rct {
     typedef std::vector<ctkey> ctkeyV;
     typedef std::vector<ctkeyV> ctkeyM;
 
+    struct ctkey3 {
+        key dest;
+        key mask; //C here if public
+        key lock;
+    };
+    typedef std::vector<ctkey3> ctkey3V;
+    typedef std::vector<ctkey3V> ctkey3M;
+
     //used for multisig data
     struct multisig_kLRki {
         key k;
@@ -179,6 +187,22 @@ namespace rct {
             FIELD(c1)
             // FIELD(I) - not serialized, it can be reconstructed
             FIELD(D)
+        END_SERIALIZE()
+    };
+    struct clsag3 {
+        keyV s; // scalars
+        key c1;
+
+        key I; // signing key image
+        key D; // commitment key image
+        key E; // timelock key image
+
+        BEGIN_SERIALIZE_OBJECT()
+            FIELD(s)
+            FIELD(c1)
+            // FIELD(I) - not serialized, it can be reconstructed
+            FIELD(D)
+            FIELD(E)
         END_SERIALIZE()
     };
 
