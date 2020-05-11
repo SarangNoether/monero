@@ -242,12 +242,13 @@ int main(int argc, char** argv)
   TEST_PERFORMANCE1(filter, p, test_range_proof, true);
   TEST_PERFORMANCE1(filter, p, test_range_proof, false);
 
-  TEST_PERFORMANCE3(filter, p, test_triptych, 2, 2, 3);
-  TEST_PERFORMANCE3(filter, p, test_triptych, 2, 2, 4);
-  TEST_PERFORMANCE3(filter, p, test_triptych, 2, 2, 5);
-  TEST_PERFORMANCE3(filter, p, test_triptych, 2, 2, 6);
-  TEST_PERFORMANCE3(filter, p, test_triptych, 2, 2, 7);
-  TEST_PERFORMANCE3(filter, p, test_triptych, 2, 2, 8);
+  TEST_PERFORMANCE4(filter, p, test_triptych, 2, 2, 2, 2);
+  TEST_PERFORMANCE4(filter, p, test_triptych, 2, 3, 2, 2);
+  TEST_PERFORMANCE4(filter, p, test_triptych, 2, 4, 2, 2);
+  TEST_PERFORMANCE4(filter, p, test_triptych, 2, 5, 2, 2);
+  TEST_PERFORMANCE4(filter, p, test_triptych, 2, 6, 2, 2);
+  TEST_PERFORMANCE4(filter, p, test_triptych, 2, 7, 2, 2);
+  TEST_PERFORMANCE4(filter, p, test_triptych, 2, 8, 2, 2);
 
   TEST_PERFORMANCE2(filter, p, test_bulletproof, true, 1); // 1 bulletproof with 1 amount
   TEST_PERFORMANCE2(filter, p, test_bulletproof, false, 1);
