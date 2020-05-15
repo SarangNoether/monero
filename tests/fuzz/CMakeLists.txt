@@ -188,3 +188,16 @@ set_property(TARGET bulletproof_fuzz_tests
   PROPERTY
     FOLDER "tests")
 
+add_executable(clsag_fuzz_tests clsag.cpp fuzzer.cpp)
+target_link_libraries(clsag_fuzz_tests
+  PRIVATE
+    wallet
+    cryptonote_core
+    device
+    serialization
+    ${CMAKE_THREAD_LIBS_INIT}
+    ${EXTRA_LIBRARIES})
+set_property(TARGET clsag_fuzz_tests
+  PROPERTY
+    FOLDER "tests")
+
