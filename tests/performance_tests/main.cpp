@@ -60,6 +60,7 @@
 #include "bulletproof.h"
 #include "crypto_ops.h"
 #include "multiexp.h"
+#include "view_tag.h"
 
 namespace po = boost::program_options;
 
@@ -189,6 +190,9 @@ int main(int argc, char** argv)
   TEST_PERFORMANCE4(filter, p, test_check_hash, 0xffffffffffffffff, 0xffffffffffffffff, 0, 1);
   TEST_PERFORMANCE4(filter, p, test_check_hash, 0xffffffffffffffff, 0xffffffffffffffff, 0xffffffffffffffff, 0xffffffffffffffff);
 
+  TEST_PERFORMANCE2(filter, p, test_view_tag, false, true); // standard scanning
+  TEST_PERFORMANCE2(filter, p, test_view_tag, true, false); // view tag, not owned
+  TEST_PERFORMANCE2(filter, p, test_view_tag, true, true); // view tag, owned
   TEST_PERFORMANCE0(filter, p, test_is_out_to_acc);
   TEST_PERFORMANCE0(filter, p, test_is_out_to_acc_precomp);
   TEST_PERFORMANCE0(filter, p, test_generate_key_image_helper);
