@@ -95,7 +95,8 @@ set(unit_tests_sources
   is_hdd.cpp
   aligned.cpp
   rpc_version_str.cpp
-  zmq_rpc.cpp)
+  zmq_rpc.cpp
+  arcturus.cpp)
 
 set(unit_tests_headers
   unit_tests_utils.h)

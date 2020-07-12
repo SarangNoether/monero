@@ -60,6 +60,7 @@
 #include "bulletproof.h"
 #include "crypto_ops.h"
 #include "multiexp.h"
+#include "arcturus.h"
 
 namespace po = boost::program_options;
 
@@ -105,6 +106,14 @@ int main(int argc, char** argv)
 
   performance_timer timer;
   timer.start();
+
+  TEST_PERFORMANCE4(filter, p, test_arcturus, 2, 2, 2, 2); // N = 4, T = 2, w = 2
+  TEST_PERFORMANCE4(filter, p, test_arcturus, 2, 3, 2, 2); // N = 8, T = 2, w = 2
+  TEST_PERFORMANCE4(filter, p, test_arcturus, 2, 4, 2, 2); // N = 16, T = 2, w = 2
+  TEST_PERFORMANCE4(filter, p, test_arcturus, 2, 5, 2, 2); // N = 32, T = 2, w = 2
+  TEST_PERFORMANCE4(filter, p, test_arcturus, 2, 6, 2, 2); // N = 64, T = 2, w = 2
+  TEST_PERFORMANCE4(filter, p, test_arcturus, 2, 7, 2, 2); // N = 128, T = 2, w = 2
+  TEST_PERFORMANCE4(filter, p, test_arcturus, 2, 8, 2, 2); // N = 256, T = 2, w = 2
 
   TEST_PERFORMANCE3(filter, p, test_construct_tx, 1, 1, false);
   TEST_PERFORMANCE3(filter, p, test_construct_tx, 1, 2, false);

@@ -88,6 +88,7 @@ namespace rct {
     };
     typedef std::vector<key> keyV; //vector of keys
     typedef std::vector<keyV> keyM; //matrix of keys (indexed by column first)
+    typedef std::vector<keyM> keyT; //tensor of keys (indexed by height first)
 
     //containers For CT operations
     //if it's  representing a private ctkey then "dest" contains the secret key of the address
@@ -148,6 +149,32 @@ namespace rct {
     //Container for precomp
     struct geDsmp {
         ge_dsmp k;
+    };
+
+    // Arcturus proof structure
+    struct ArcturusProof
+    {
+        keyV J;
+        key A,B,C,D;
+        keyV X,Y,Z;
+        keyT f;
+        key zA,zC,zS;
+        keyV zR;
+
+        BEGIN_SERIALIZE_OBJECT()
+            FIELD(A)
+            FIELD(B)
+            FIELD(C)
+            FIELD(D)
+            FIELD(X)
+            FIELD(Y)
+            FIELD(Z)
+            FIELD(f)
+            FIELD(zA)
+            FIELD(zC)
+            FIELD(zR)
+            FIELD(zS)
+        END_SERIALIZE()
     };
     
     //just contains the necessary keys to represent MLSAG sigs
@@ -598,6 +625,7 @@ VARIANT_TAG(debug_archive, rct::key, "rct::key");
 VARIANT_TAG(debug_archive, rct::key64, "rct::key64");
 VARIANT_TAG(debug_archive, rct::keyV, "rct::keyV");
 VARIANT_TAG(debug_archive, rct::keyM, "rct::keyM");
+VARIANT_TAG(debug_archive, rct::keyT, "rct::keyT");
 VARIANT_TAG(debug_archive, rct::ctkey, "rct::ctkey");
 VARIANT_TAG(debug_archive, rct::ctkeyV, "rct::ctkeyV");
 VARIANT_TAG(debug_archive, rct::ctkeyM, "rct::ctkeyM");
@@ -625,11 +653,13 @@ VARIANT_TAG(binary_archive, rct::rctSig, 0x9b);
 VARIANT_TAG(binary_archive, rct::Bulletproof, 0x9c);
 VARIANT_TAG(binary_archive, rct::multisig_kLRki, 0x9d);
 VARIANT_TAG(binary_archive, rct::multisig_out, 0x9e);
+VARIANT_TAG(binary_archive, rct::keyT, 0x9f);
 
 VARIANT_TAG(json_archive, rct::key, "rct_key");
 VARIANT_TAG(json_archive, rct::key64, "rct_key64");
 VARIANT_TAG(json_archive, rct::keyV, "rct_keyV");
 VARIANT_TAG(json_archive, rct::keyM, "rct_keyM");
+VARIANT_TAG(json_archive, rct::keyT, "rct_keyT");
 VARIANT_TAG(json_archive, rct::ctkey, "rct_ctkey");
 VARIANT_TAG(json_archive, rct::ctkeyV, "rct_ctkeyV");
 VARIANT_TAG(json_archive, rct::ctkeyM, "rct_ctkeyM");

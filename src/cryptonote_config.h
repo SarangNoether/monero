@@ -219,6 +219,9 @@ namespace config
   const unsigned char HASH_KEY_RPC_PAYMENT_NONCE = 0x58;
   const unsigned char HASH_KEY_MEMORY = 'k';
   const unsigned char HASH_KEY_MULTISIG[] = {'M', 'u', 'l', 't' , 'i', 's', 'i', 'g', 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
+  const char HASH_KEY_ARCTURUS_H[] = "arcturus H";
+  const char HASH_KEY_ARCTURUS_U[] = "arcturus U";
+  const char HASH_KEY_ARCTURUS_TRANSCRIPT[] = "arcturus transcript";
 
   namespace testnet
   {

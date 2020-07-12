@@ -233,6 +233,16 @@ namespace rct {
         return rv;
     }
 
+    keyT keyTInit(size_t x, size_t y, size_t z)
+    {
+        keyT result(z);
+        for (size_t k = 0; k < z; k++)
+        {
+            result[k] = keyMInit(x,y);
+        }
+        return result;
+    }
+
 
 
 
@@ -544,7 +554,7 @@ namespace rct {
     void cn_fast_hash(key &hash, const void * data, const std::size_t l) {
         keccak((const uint8_t *)data, l, hash.bytes, 32);
     }
-    
+
     void hash_to_scalar(key &hash, const void * data, const std::size_t l) {
         cn_fast_hash(hash, data, l);
         sc_reduce32(hash.bytes);

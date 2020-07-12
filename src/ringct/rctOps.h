@@ -84,6 +84,8 @@ namespace rct {
     //second is columns
     keyM keyMInit(size_t rows, size_t cols);
 
+    keyT keyTInit(size_t x, size_t y, size_t z);
+
     //Various key generation functions        
     bool toPointCheckOrder(ge_p3 *P, const unsigned char *data);
 
