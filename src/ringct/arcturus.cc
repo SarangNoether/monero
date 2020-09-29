@@ -188,6 +188,49 @@ namespace rct
         return inv;
     }
 
+    // Invert a tensor
+    static keyT invert(keyT x)
+    {
+        keyT scratch = keyTInit(x[0][0].size(),x[0].size(),x.size());
+        key acc = identity();
+        for (size_t k = 0; k < x.size(); k++)
+        {
+            for (size_t j = 0; j < x[0].size(); j++)
+            {
+                for (size_t i = 0; i < x[0][0].size(); i++)
+                {
+                    copy(scratch[k][j][i],acc);
+                    if (k == 0 && j == 0 && i == 0)
+                    {
+                        acc = x[0][0][0];
+                    }
+                    else
+                    {
+                        sc_mul(acc.bytes,acc.bytes,x[k][j][i].bytes);
+                    }
+                }
+            }
+        }
+
+        acc = invert(acc);
+
+        key temp;
+        for (size_t k = x.size(); k-- > 0; )
+        {
+            for (size_t j = x[0].size(); j-- > 0; )
+            {
+                for (size_t i = x[0][0].size(); i-- > 0; )
+                {
+                    sc_mul(temp.bytes, acc.bytes, x[k][j][i].bytes);
+                    sc_mul(x[k][j][i].bytes, acc.bytes, scratch[k][j][i].bytes);
+                    acc = temp;
+                }
+            }
+        }
+
+        return x;
+    }
+
     // Make generators, but only once
     static void init_gens()
     {
@@ -222,21 +265,55 @@ namespace rct
         init_done = true;
     }
 
-    // Decompose an integer with a fixed base and size
-    static void decompose(std::vector<size_t> &r, const size_t val, const size_t base, const size_t size)
+    // Data for iterated Gray codes
+    static size_t gray_counter; // about to be generated
+    static std::vector<int> gray_g;
+    static std::vector<int> gray_u;
+    static size_t gray_index;
+    static int gray_old;
+    static int gray_new;
+    static int gray_N;
+    static int gray_K;
+
+    // Prepare for a new Gray iteration cycle
+    static void gray_init()
     {
-        CHECK_AND_ASSERT_THROW_MES(base > 1, "Bad decomposition parameters!");
-        CHECK_AND_ASSERT_THROW_MES(size > 0, "Bad decomposition parameters!");
-        CHECK_AND_ASSERT_THROW_MES(r.size() >= size, "Bad decomposition result vector size!");
-
-        size_t temp = val;
-
-        for (size_t i = 0; i < size; i++)
+        gray_counter = 0;
+        gray_g.resize(0);
+        gray_u.resize(0);
+        for (int i = 0; i < gray_K+1; i++)
         {
-            size_t slot = pow(base,size-i-1);
-            r[size-i-1] = temp/slot;
-            temp -= slot*r[size-i-1];
+            gray_g.push_back(0);
+            gray_u.push_back(1);
         }
+        gray_index = 0;
+        gray_old = 0;
+        gray_new = 0;
+    }
+
+    // Generate change data for the next Gray code
+    static void gray_next()
+    {
+        // Zero data is done
+        if (gray_counter == 0)
+        {
+            gray_counter++;
+            return;
+        }
+
+        size_t i = 0;
+        int k = gray_g[0] + gray_u[0];
+        while (k >= gray_N || k < 0)
+        {
+            gray_u[i] = -gray_u[i];
+            i++;
+            k = gray_g[i] + gray_u[i];
+        }
+        gray_index = i;
+        gray_old = gray_g[i];
+        gray_new = k;
+        gray_g[i] = k;
+        gray_counter++;
     }
 
     // Commit: vH + rG
@@ -340,6 +417,9 @@ namespace rct
         }
 
         init_gens();
+        gray_N = n;
+        gray_K = m;
+        gray_init();
 
         ArcturusProof proof;
         std::vector<MultiexpData> data;
@@ -394,7 +474,16 @@ namespace rct
         {
             decomp_l[u].reserve(m);
             decomp_l[u].resize(m);
-            decompose(decomp_l[u],l[u],n,m);
+            gray_init();
+            for (size_t j = 0; j < m; j++)
+            {
+                decomp_l[u][j] = 0;
+            }
+            while (gray_counter <= l[u])
+            {
+                gray_next();
+                decomp_l[u][gray_index] = gray_new;
+            }
         }
 
         keyT sigma = keyTInit(n,m,w);
@@ -460,16 +549,24 @@ namespace rct
         CHECK_AND_ASSERT_THROW_MES(!(proof.D == IDENTITY), "Linear combination unexpectedly returned zero!");
 
         // Compute p coefficients
+        gray_N = n;
+        gray_K = m;
+        gray_init();
         keyT p = keyTInit(m+1,N,w);
         CHECK_AND_ASSERT_THROW_MES(p.size() == w, "Bad matrix size!");
         CHECK_AND_ASSERT_THROW_MES(p[0].size() == N, "Bad matrix size!");
         CHECK_AND_ASSERT_THROW_MES(p[0][0].size() == m+1, "Bad matrix size!");
+        std::vector<size_t> decomp_k;
+        decomp_k.reserve(m);
+        decomp_k.resize(m);
+        for (size_t j = 0; j < m; j++)
+        {
+            decomp_k[j] = 0;
+        }
         for (size_t k = 0; k < N; k++)
         {
-            std::vector<size_t> decomp_k;
-            decomp_k.reserve(m);
-            decomp_k.resize(m);
-            decompose(decomp_k,k,n,m);
+            gray_next();
+            decomp_k[gray_index] = gray_new;
 
             for (size_t u = 0; u < w; u++)
             {
@@ -799,6 +896,9 @@ namespace rct
             }
         }
 
+        // Invert the f-tensor
+        keyT f_invert = invert(f);
+
         // Matrix generators
         for (size_t j = 0; j < m; j++)
         {
@@ -854,25 +954,28 @@ namespace rct
         key U_scalars = ZERO;
         keyV t = keyV(w);
         key sum_t;
+        gray_N = n;
+        gray_K = m;
+        gray_init();
+        for (size_t u = 0; u < w; u++)
+        {
+            t[u] = ONE;
+            for (size_t j = 0; j < m; j++)
+            {
+                sc_mul(t[u].bytes,t[u].bytes,f[u][j][0].bytes);
+            }
+        }
         for (size_t k = 0; k < N; k++)
         {
-            for (size_t u = 0; u < w; u++)
-            {
-                t[u] = ONE;
-            }
-            std::vector<size_t> decomp_k;
-            decomp_k.reserve(m);
-            decomp_k.resize(m);
-            decompose(decomp_k,k,n,m);
-
-            for (size_t j = 0; j < m; j++)
+            gray_next();
+            if (k > 0)
             {
                 for (size_t u = 0; u < w; u++)
                 {
-                    sc_mul(t[u].bytes,t[u].bytes,f[u][j][decomp_k[j]].bytes);
+                    sc_mul(t[u].bytes,t[u].bytes,f_invert[u][gray_index][gray_old].bytes);
+                    sc_mul(t[u].bytes,t[u].bytes,f[u][gray_index][gray_new].bytes);
                 }
             }
-
             sum_t = ZERO;
             for (size_t u = 0; u < w; u++)
             {
