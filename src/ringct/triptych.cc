@@ -181,6 +181,43 @@ namespace rct
         return inv;
     }
 
+    // Invert a matrix
+    static keyM invert(keyM x)
+    {
+        keyM scratch = keyMInit(x[0].size(),x.size());
+        key acc = identity();
+        for (size_t j = 0; j < x.size(); j++)
+        {
+            for (size_t i = 0; i < x[0].size(); i++)
+            {
+                copy(scratch[j][i],acc);
+                if (j == 0 && i == 0)
+                {
+                    acc = x[0][0];
+                }
+                else
+                {
+                    sc_mul(acc.bytes,acc.bytes,x[j][i].bytes);
+                }
+            }
+        }
+
+        acc = invert(acc);
+
+        key temp;
+        for (size_t j = x.size(); j-- > 0; )
+        {
+            for (size_t i = x[0].size(); i-- > 0; )
+            {
+                sc_mul(temp.bytes, acc.bytes, x[j][i].bytes);
+                sc_mul(x[j][i].bytes, acc.bytes, scratch[j][i].bytes);
+                acc = temp;
+            }
+        }
+
+        return x;
+    }
+
     // Make generators, but only once
     static void init_gens()
     {
@@ -215,21 +252,55 @@ namespace rct
         init_done = true;
     }
 
-    // Decompose an integer with a fixed base and size
-    static void decompose(std::vector<size_t> &r, const size_t val, const size_t base, const size_t size)
+    // Data for iterated Gray codes
+    static size_t gray_counter; // about to be generated
+    static std::vector<int> gray_g;
+    static std::vector<int> gray_u;
+    static size_t gray_index;
+    static int gray_old;
+    static int gray_new;
+    static int gray_N;
+    static int gray_K;
+
+    // Prepare for a new Gray iteration cycle
+    static void gray_init()
     {
-        CHECK_AND_ASSERT_THROW_MES(base > 1, "Bad decomposition parameters!");
-        CHECK_AND_ASSERT_THROW_MES(size > 0, "Bad decomposition parameters!");
-        CHECK_AND_ASSERT_THROW_MES(r.size() >= size, "Bad decomposition result vector size!");
-
-        size_t temp = val;
-
-        for (size_t i = 0; i < size; i++)
+        gray_counter = 0;
+        gray_g.resize(0);
+        gray_u.resize(0);
+        for (int i = 0; i < gray_K+1; i++)
         {
-            size_t slot = pow(base,size-i-1);
-            r[size-i-1] = temp/slot;
-            temp -= slot*r[size-i-1];
+            gray_g.push_back(0);
+            gray_u.push_back(1);
         }
+        gray_index = 0;
+        gray_old = 0;
+        gray_new = 0;
+    }
+
+    // Generate change data for the next Gray code
+    static void gray_next()
+    {
+        // Zero data is done
+        if (gray_counter == 0)
+        {
+            gray_counter++;
+            return;
+        }
+
+        size_t i = 0;
+        int k = gray_g[0] + gray_u[0];
+        while (k >= gray_N || k < 0)
+        {
+            gray_u[i] = -gray_u[i];
+            i++;
+            k = gray_g[i] + gray_u[i];
+        }
+        gray_index = i;
+        gray_old = gray_g[i];
+        gray_new = k;
+        gray_g[i] = k;
+        gray_counter++;
     }
 
     // Commit to a scalar matrix
@@ -307,6 +378,9 @@ namespace rct
         CHECK_AND_ASSERT_THROW_MES(scalarmultBase(s) == temp, "Bad commitment key!");
 
         init_gens();
+        gray_N = n;
+        gray_K = m;
+        gray_init();
 
         TriptychProof proof;
         std::vector<MultiexpData> data;
@@ -351,7 +425,15 @@ namespace rct
         std::vector<size_t> decomp_l;
         decomp_l.reserve(m);
         decomp_l.resize(m);
-        decompose(decomp_l,l,n,m);
+        for (size_t j = 0; j < m; j++)
+        {
+            decomp_l[j] = 0;
+        }
+        while (gray_counter <= l)
+        {
+            gray_next();
+            decomp_l[gray_index] = gray_new;
+        }
 
         keyM sigma = keyMInit(n,m);
         CHECK_AND_ASSERT_THROW_MES(sigma.size() == m, "Bad matrix size!");
@@ -402,15 +484,23 @@ namespace rct
         CHECK_AND_ASSERT_THROW_MES(!(proof.D == IDENTITY), "Linear combination unexpectedly returned zero!");
 
         // Compute p coefficients
+        gray_N = n;
+        gray_K = m;
+        gray_init();
         keyM p = keyMInit(m+1,N);
         CHECK_AND_ASSERT_THROW_MES(p.size() == N, "Bad matrix size!");
         CHECK_AND_ASSERT_THROW_MES(p[0].size() == m+1, "Bad matrix size!");
+        std::vector<size_t> decomp_k;
+        decomp_k.reserve(m);
+        decomp_k.resize(m);
+        for (size_t j = 0; j < m; j++)
+        {
+            decomp_k[j] = 0;
+        }
         for (size_t k = 0; k < N; k++)
         {
-            std::vector<size_t> decomp_k;
-            decomp_k.reserve(m);
-            decomp_k.resize(m);
-            decompose(decomp_k,k,n,m);
+            gray_next();
+            decomp_k[gray_index] = gray_new;
 
             for (size_t j = 0; j < m+1; j++)
             {
@@ -701,6 +791,9 @@ namespace rct
                 CHECK_AND_ASSERT_THROW_MES(!(f[j][0] == ZERO), "Proof matrix element should not be zero!");
             }
 
+            // Invert the f-matrix
+            keyM f_invert = invert(f);
+
             // Matrix generators
             for (size_t j = 0; j < m; j++)
             {
@@ -747,27 +840,32 @@ namespace rct
             // M,P
             // M[k]: w3*t
             // P[k]: w3*t*mu
+            key t = ONE;
             key sum_t = ZERO;
+            gray_N = n;
+            gray_K = m;
+            gray_init();
+            for (size_t j = 0; j < m; j++)
+            {
+                sc_mul(t.bytes,t.bytes,f[j][0].bytes);
+            }
             for (size_t k = 0; k < N; k++)
             {
-                key t = ONE;
-                std::vector<size_t> decomp_k;
-                decomp_k.reserve(m);
-                decomp_k.resize(m);
-                decompose(decomp_k,k,n,m);
-
-                for (size_t j = 0; j < m; j++)
+                gray_next();
+                if (k > 0)
                 {
-                    sc_mul(t.bytes,t.bytes,f[j][decomp_k[j]].bytes);
+                    sc_mul(t.bytes,t.bytes,f_invert[gray_index][gray_old].bytes);
+                    sc_mul(t.bytes,t.bytes,f[gray_index][gray_new].bytes);
                 }
+                sc_add(sum_t.bytes,sum_t.bytes,t.bytes);
 
+                // M
                 sc_mul(temp.bytes,w3.bytes,t.bytes);
                 sc_add(data[m*n+1+k].scalar.bytes,data[m*n+1+k].scalar.bytes,temp.bytes);
-
+                
+                // P
                 sc_mul(temp.bytes,temp.bytes,mu.bytes);
                 sc_add(data[m*n+N+1+k].scalar.bytes,data[m*n+N+1+k].scalar.bytes,temp.bytes);
-
-                sc_add(sum_t.bytes,sum_t.bytes,t.bytes);
             }
 
             // C_offsets[i_proofs]: -w3*mu*sum_t
